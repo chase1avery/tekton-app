@@ -87,130 +87,350 @@ const fmtTime = (t) => {
 const today = () => new Date().toISOString().split("T")[0];
 
 // ============================================================
-// MOCK DATA
+// SUPABASE CLIENT
 // ============================================================
-const MOCK_MEMBERS = [
-  { id: "m1", email: "chase@tektonfitness.com", password: "demo123", firstName: "Chase", lastName: "Avery", role: "admin", avatar: null, phone: "(801) 419-2488", emergencyContact: { name: "Sarah Avery", phone: "(801) 555-0102", relation: "Spouse" }, membershipType: "unlimited", membershipStatus: "active", joinDate: "2023-01-15T00:00:00Z", gymId: "tekton-fitness" },
-  { id: "m2", email: "mckensey@tektonfitness.com", password: "demo123", firstName: "McKensey", lastName: "Ciaramella", role: "coach", avatar: null, phone: "(801) 555-0201", emergencyContact: { name: "Emergency Contact", phone: "(801) 555-0202", relation: "Family" }, membershipType: "unlimited", membershipStatus: "active", joinDate: "2020-06-01T00:00:00Z", gymId: "tekton-fitness" },
-  { id: "m3", email: "brett@tektonfitness.com", password: "demo123", firstName: "Brett", lastName: "Wilson", role: "coach", avatar: null, phone: "(801) 555-0301", emergencyContact: { name: "Emergency Contact", phone: "(801) 555-0302", relation: "Family" }, membershipType: "unlimited", membershipStatus: "active", joinDate: "2019-03-01T00:00:00Z", gymId: "tekton-fitness" },
-  { id: "m4", email: "alex@example.com", password: "demo123", firstName: "Alex", lastName: "Rivera", role: "member", avatar: null, phone: "(801) 555-0401", emergencyContact: { name: "Maria Rivera", phone: "(801) 555-0402", relation: "Spouse" }, membershipType: "unlimited", membershipStatus: "active", joinDate: "2023-06-10T00:00:00Z", gymId: "tekton-fitness" },
-  { id: "m5", email: "taylor@example.com", password: "demo123", firstName: "Taylor", lastName: "Brooks", role: "member", avatar: null, phone: "(801) 555-0501", emergencyContact: { name: "Mike Brooks", phone: "(801) 555-0502", relation: "Brother" }, membershipType: "limited", membershipStatus: "active", joinDate: "2024-01-20T00:00:00Z", gymId: "tekton-fitness" },
-  { id: "m6", email: "hilary@example.com", password: "demo123", firstName: "Hilary", lastName: "Simmons", role: "member", avatar: null, phone: "(801) 555-0601", emergencyContact: { name: "Dan Simmons", phone: "(801) 555-0602", relation: "Spouse" }, membershipType: "unlimited", membershipStatus: "active", joinDate: "2022-09-15T00:00:00Z", gymId: "tekton-fitness" },
-];
+import { createClient } from '@supabase/supabase-js';
 
-// Generate a full week of sessions dynamically
-const generateWeekSessions = () => {
-  const week = getWeekDates(new Date());
-  const sessions = [];
-  let sid = 1;
-  const weekdaySlots = [
-    { title: "CrossFit", startTime: "05:00", endTime: "06:00", capacity: 16, coachId: "m2" },
-    { title: "CrossFit", startTime: "06:00", endTime: "07:00", capacity: 16, coachId: "m3" },
-    { title: "CrossFit", startTime: "09:00", endTime: "10:00", capacity: 16, coachId: "m2" },
-    { title: "CrossFit", startTime: "12:00", endTime: "13:00", capacity: 16, coachId: "m3" },
-    { title: "CrossFit", startTime: "16:30", endTime: "17:30", capacity: 16, coachId: "m2" },
-    { title: "CrossFit", startTime: "17:30", endTime: "18:30", capacity: 16, coachId: "m3" },
-    { title: "Open Gym", startTime: "18:30", endTime: "19:30", capacity: 24, coachId: "m2" },
-  ];
-  const satSlots = [
-    { title: "CrossFit", startTime: "07:00", endTime: "08:00", capacity: 20, coachId: "m3" },
-    { title: "CrossFit", startTime: "08:00", endTime: "09:00", capacity: 20, coachId: "m2" },
-    { title: "Barbell Club", startTime: "09:00", endTime: "10:00", capacity: 12, coachId: "m3" },
-  ];
-  // Pre-seed some signups for today and tomorrow
-  const todayStr = today();
-  const tomorrowStr = week[week.indexOf(todayStr) + 1] || week[1];
-
-  week.forEach((date) => {
-    const d = new Date(date + "T12:00:00");
-    const dow = d.getDay();
-    if (dow === 0) return; // Sunday closed
-    const slots = dow === 6 ? satSlots : weekdaySlots;
-    slots.forEach((slot) => {
-      let signups = [];
-      if (date === todayStr) {
-        if (slot.startTime === "05:00") signups = ["m1", "m4", "m6"];
-        else if (slot.startTime === "06:00") signups = ["m5"];
-        else if (slot.startTime === "12:00") signups = ["m4"];
-        else if (slot.startTime === "16:30") signups = ["m1", "m4", "m5", "m6"];
-      } else if (date === tomorrowStr) {
-        if (slot.startTime === "05:00" || slot.startTime === "07:00") signups = ["m1", "m4"];
-      }
-      sessions.push({
-        id: `s${sid++}`, gymId: "tekton-fitness", coachId: slot.coachId,
-        title: slot.title, date, startTime: slot.startTime, endTime: slot.endTime,
-        capacity: slot.capacity, signups: [...signups], workoutId: null,
-      });
-    });
-  });
-  return sessions;
-};
-
-const MOCK_SESSIONS = generateWeekSessions();
-
-const MOCK_WORKOUTS = [
-  { id: "w1", gymId: "tekton-fitness", createdBy: "m2", date: today() + "T00:00:00Z", title: "FRAN", type: "ForTime", description: "21-15-9 Thrusters and Pull-ups", movements: [{ name: "Thrusters", reps: "21-15-9", weight: "95/65 lbs", notes: null }, { name: "Pull-ups", reps: "21-15-9", weight: null, notes: null }], timeCap: 10, rounds: null },
-  { id: "w2", gymId: "tekton-fitness", createdBy: "m3", date: "2026-03-06T00:00:00Z", title: "DT", type: "ForTime", description: "5 Rounds: 12 DL, 9 HPC, 6 Push Jerk (155/105)", movements: [{ name: "Deadlifts", reps: "12", weight: "155/105 lbs", notes: null }, { name: "Hang Power Cleans", reps: "9", weight: "155/105 lbs", notes: null }, { name: "Push Jerks", reps: "6", weight: "155/105 lbs", notes: null }], timeCap: 15, rounds: 5 },
-  { id: "w3", gymId: "tekton-fitness", createdBy: "m2", date: "2026-03-05T00:00:00Z", title: "Midweek Grinder", type: "AMRAP", description: "16 min AMRAP", movements: [{ name: "Wall Balls", reps: "15", weight: "20/14 lbs", notes: null }, { name: "Box Jumps", reps: "12", weight: "24/20 in", notes: null }, { name: "Toes-to-Bar", reps: "9", weight: null, notes: null }], timeCap: 16, rounds: null },
-];
-
-const MOCK_PRS = [
-  { id: "pr1", memberId: "m1", category: "lift", name: "Back Squat", value: "365", unit: "lbs", date: "2026-02-15T00:00:00Z", notes: "Belt + sleeves" },
-  { id: "pr2", memberId: "m1", category: "lift", name: "Deadlift", value: "425", unit: "lbs", date: "2026-01-20T00:00:00Z", notes: null },
-  { id: "pr3", memberId: "m1", category: "lift", name: "Clean & Jerk", value: "255", unit: "lbs", date: "2025-12-10T00:00:00Z", notes: "Competition" },
-  { id: "pr4", memberId: "m1", category: "benchmark", name: "Fran", value: "3:42", unit: "time", date: "2026-01-05T00:00:00Z", notes: "Rx" },
-  { id: "pr5", memberId: "m1", category: "benchmark", name: "Murph", value: "38:15", unit: "time", date: "2025-05-26T00:00:00Z", notes: "Partitioned" },
-  { id: "pr6", memberId: "m4", category: "lift", name: "Back Squat", value: "315", unit: "lbs", date: "2026-02-20T00:00:00Z", notes: null },
-  { id: "pr7", memberId: "m4", category: "benchmark", name: "Fran", value: "4:10", unit: "time", date: "2026-01-05T00:00:00Z", notes: "Rx" },
-  { id: "pr8", memberId: "m6", category: "lift", name: "Back Squat", value: "185", unit: "lbs", date: "2026-02-22T00:00:00Z", notes: "PR!" },
-];
-
-const MOCK_RESULTS = [
-  { id: "r1", memberId: "m1", workoutId: "w1", sessionId: "s1", score: "3:58", scoreType: "time", rx: true, notes: "UB thrusters round of 21", date: "2026-03-07T06:00:00Z", highFives: ["m4","m6","m3"] },
-  { id: "r2", memberId: "m4", workoutId: "w1", sessionId: "s1", score: "5:22", scoreType: "time", rx: true, notes: "Broke up pull-ups 11/10", date: "2026-03-07T06:00:00Z", highFives: ["m1"] },
-  { id: "r3", memberId: "m6", workoutId: "w1", sessionId: "s1", score: "7:15", scoreType: "time", rx: false, notes: "65lb thrusters + banded PU", date: "2026-03-07T06:00:00Z", highFives: ["m1","m4","m2"] },
-  { id: "r4", memberId: "m5", workoutId: "w1", sessionId: "s2", score: "6:03", scoreType: "time", rx: true, notes: null, date: "2026-03-07T07:00:00Z", highFives: [] },
-  { id: "r5", memberId: "m1", workoutId: "w2", sessionId: null, score: "9:45", scoreType: "time", rx: true, notes: "Heavy but moved well", date: "2026-03-06T06:30:00Z", highFives: ["m3","m4","m5","m6"] },
-  { id: "r6", memberId: "m4", workoutId: "w2", sessionId: null, score: "11:20", scoreType: "time", rx: true, notes: "Grip was toast after round 3", date: "2026-03-06T06:30:00Z", highFives: ["m1","m6"] },
-  { id: "r7", memberId: "m3", workoutId: "w2", sessionId: null, score: "8:12", scoreType: "time", rx: true, notes: "Fast cycling", date: "2026-03-06T07:30:00Z", highFives: ["m1","m2","m4","m5","m6"] },
-  { id: "r8", memberId: "m5", workoutId: "w3", sessionId: null, score: "4+15", scoreType: "rounds+reps", rx: true, notes: "T2B unbroken!", date: "2026-03-05T06:30:00Z", highFives: ["m1","m4"] },
-  { id: "r9", memberId: "m6", workoutId: "w3", sessionId: null, score: "3+22", scoreType: "rounds+reps", rx: false, notes: "Scaled to knee raises", date: "2026-03-05T06:30:00Z", highFives: ["m1"] },
-  { id: "r10", memberId: "m1", workoutId: "w3", sessionId: null, score: "5+3", scoreType: "rounds+reps", rx: true, notes: "Wall balls slowed me down", date: "2026-03-05T06:30:00Z", highFives: ["m3","m4"] },
-];
-
-const MOCK_BILLING = [
-  { id: "b1", memberId: "m1", amount: 17500, description: "Unlimited — Mar 2026", date: "2026-03-01T00:00:00Z", status: "paid", method: "card" },
-  { id: "b2", memberId: "m1", amount: 17500, description: "Unlimited — Feb 2026", date: "2026-02-01T00:00:00Z", status: "paid", method: "card" },
-  { id: "b3", memberId: "m1", amount: 17500, description: "Unlimited — Jan 2026", date: "2026-01-01T00:00:00Z", status: "paid", method: "card" },
-  { id: "b4", memberId: "m1", amount: 17500, description: "Unlimited — Dec 2025", date: "2025-12-01T00:00:00Z", status: "paid", method: "card" },
-  { id: "b5", memberId: "m1", amount: 17500, description: "Unlimited — Nov 2025", date: "2025-11-01T00:00:00Z", status: "paid", method: "card" },
-  { id: "b6", memberId: "m4", amount: 17500, description: "Unlimited — Mar 2026", date: "2026-03-01T00:00:00Z", status: "paid", method: "card" },
-  { id: "b7", memberId: "m5", amount: 14000, description: "3x/Week — Mar 2026", date: "2026-03-01T00:00:00Z", status: "pending", method: "card" },
-];
+const supabase = createClient(
+  'https://hgxharjliwycyefinnpm.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhneGhhcmpsaXd5Y3llZmlubnBtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5ODQ0MjMsImV4cCI6MjA4OTU2MDQyM30.NC9d5Sv4qigJcexRrdkXCWH6MGvFiEbGFNGhybOpdug'
+);
 
 // ============================================================
-// SERVICE LAYER
+// FIELD MAPPERS (snake_case DB <-> camelCase UI)
 // ============================================================
-const createService = (init) => {
-  let d = [...init];
-  return {
-    getAll: () => Promise.resolve([...d]),
-    getById: (id) => Promise.resolve(d.find((x) => x.id === id) || null),
-    getByField: (f, v) => Promise.resolve(d.filter((x) => x[f] === v)),
-    create: (item) => { const n = { ...item, id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}` }; d = [...d, n]; return Promise.resolve(n); },
-    update: (id, u) => { d = d.map((x) => (x.id === id ? { ...x, ...u } : x)); return Promise.resolve(d.find((x) => x.id === id)); },
-    delete: (id) => { d = d.filter((x) => x.id !== id); return Promise.resolve(true); },
-  };
-};
+const mapMember = (m) => m ? ({
+  id: m.id, authId: m.auth_id, email: m.email,
+  firstName: m.first_name, lastName: m.last_name, role: m.role,
+  phone: m.phone || "", avatar: m.avatar_url,
+  emergencyContact: m.emergency_contact || { name: "", phone: "", relation: "" },
+  membershipType: m.membership_type, membershipStatus: m.membership_status,
+  joinDate: m.join_date, gymId: m.gym_id,
+}) : null;
+
+const mapWorkout = (w) => w ? ({
+  id: w.id, gymId: w.gym_id, createdBy: w.created_by,
+  date: w.date, title: w.title, type: w.type,
+  description: w.description || "", warmup: w.warmup, strength: w.strength,
+  accessory: w.accessory, movements: w.movements || [],
+  timeCap: w.time_cap, rounds: w.rounds,
+}) : null;
+
+const mapSession = (s) => s ? ({
+  id: s.id, gymId: s.gym_id, coachId: s.coach_id,
+  title: s.title, date: s.date,
+  startTime: s.start_time?.slice(0, 5) || s.start_time,
+  endTime: s.end_time?.slice(0, 5) || s.end_time,
+  capacity: s.capacity, workoutId: s.workout_id,
+  signups: (s.session_signups || []).map(su => su.member_id),
+}) : null;
+
+const mapPr = (p) => p ? ({
+  id: p.id, memberId: p.member_id, category: p.category,
+  name: p.name, value: p.value, unit: p.unit,
+  date: p.date, notes: p.notes,
+}) : null;
+
+const mapResult = (r) => r ? ({
+  id: r.id, memberId: r.member_id, workoutId: r.workout_id,
+  sessionId: r.session_id, score: r.score, scoreType: r.score_type,
+  rx: r.rx, notes: r.notes, date: r.date,
+  highFives: r.high_fives || [],
+}) : null;
+
+const mapBilling = (b) => b ? ({
+  id: b.id, memberId: b.member_id, amount: b.amount,
+  description: b.description, date: b.date,
+  status: b.status, method: b.method,
+}) : null;
+
+// ============================================================
+// SERVICE LAYER (Supabase)
+// ============================================================
 const services = {
-  members: createService(MOCK_MEMBERS), workouts: createService(MOCK_WORKOUTS),
-  sessions: createService(MOCK_SESSIONS), prs: createService(MOCK_PRS),
-  results: createService(MOCK_RESULTS), billing: createService(MOCK_BILLING),
+  members: {
+    getAll: async () => {
+      const { data } = await supabase.from('members').select('*').eq('gym_id', GYM_CONFIG.id);
+      return (data || []).map(mapMember);
+    },
+    getById: async (id) => {
+      const { data } = await supabase.from('members').select('*').eq('id', id).single();
+      return mapMember(data);
+    },
+    getByField: async (field, value) => {
+      const dbField = { memberId: 'member_id', gymId: 'gym_id', authId: 'auth_id', email: 'email', role: 'role' }[field] || field;
+      const { data } = await supabase.from('members').select('*').eq(dbField, value);
+      return (data || []).map(mapMember);
+    },
+    create: async (item) => {
+      const { data } = await supabase.from('members').insert({
+        email: item.email, first_name: item.firstName, last_name: item.lastName,
+        role: item.role || 'member', phone: item.phone || '',
+        emergency_contact: item.emergencyContact || { name: "", phone: "", relation: "" },
+        membership_type: item.membershipType || 'unlimited',
+        membership_status: item.membershipStatus || 'active',
+        gym_id: item.gymId || GYM_CONFIG.id,
+      }).select().single();
+      return mapMember(data);
+    },
+    update: async (id, updates) => {
+      const dbUpdates = {};
+      if (updates.firstName !== undefined) dbUpdates.first_name = updates.firstName;
+      if (updates.lastName !== undefined) dbUpdates.last_name = updates.lastName;
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
+      if (updates.role !== undefined) dbUpdates.role = updates.role;
+      if (updates.emergencyContact !== undefined) dbUpdates.emergency_contact = updates.emergencyContact;
+      if (updates.membershipType !== undefined) dbUpdates.membership_type = updates.membershipType;
+      if (updates.membershipStatus !== undefined) dbUpdates.membership_status = updates.membershipStatus;
+      if (updates.avatar !== undefined) dbUpdates.avatar_url = updates.avatar;
+      const { data } = await supabase.from('members').update(dbUpdates).eq('id', id).select().single();
+      return mapMember(data);
+    },
+    delete: async (id) => {
+      await supabase.from('members').delete().eq('id', id);
+      return true;
+    },
+  },
+
+  workouts: {
+    getAll: async () => {
+      const { data } = await supabase.from('workouts').select('*').eq('gym_id', GYM_CONFIG.id).order('date', { ascending: false });
+      return (data || []).map(mapWorkout);
+    },
+    getById: async (id) => {
+      const { data } = await supabase.from('workouts').select('*').eq('id', id).single();
+      return mapWorkout(data);
+    },
+    getByField: async (field, value) => {
+      const dbField = { gymId: 'gym_id', createdBy: 'created_by' }[field] || field;
+      const { data } = await supabase.from('workouts').select('*').eq(dbField, value);
+      return (data || []).map(mapWorkout);
+    },
+    create: async (item) => {
+      const { data } = await supabase.from('workouts').insert({
+        gym_id: item.gymId || GYM_CONFIG.id, created_by: item.createdBy || null,
+        date: item.date, title: item.title, type: item.type || 'ForTime',
+        description: item.description || '', warmup: item.warmup || null,
+        strength: item.strength || null, accessory: item.accessory || null,
+        movements: item.movements || [], time_cap: item.timeCap || null,
+        rounds: item.rounds || null,
+      }).select().single();
+      return mapWorkout(data);
+    },
+    update: async (id, updates) => {
+      const dbUpdates = {};
+      if (updates.title !== undefined) dbUpdates.title = updates.title;
+      if (updates.type !== undefined) dbUpdates.type = updates.type;
+      if (updates.description !== undefined) dbUpdates.description = updates.description;
+      if (updates.warmup !== undefined) dbUpdates.warmup = updates.warmup;
+      if (updates.strength !== undefined) dbUpdates.strength = updates.strength;
+      if (updates.accessory !== undefined) dbUpdates.accessory = updates.accessory;
+      if (updates.movements !== undefined) dbUpdates.movements = updates.movements;
+      if (updates.timeCap !== undefined) dbUpdates.time_cap = updates.timeCap;
+      if (updates.date !== undefined) dbUpdates.date = updates.date;
+      const { data } = await supabase.from('workouts').update(dbUpdates).eq('id', id).select().single();
+      return mapWorkout(data);
+    },
+    delete: async (id) => {
+      await supabase.from('workouts').delete().eq('id', id);
+      return true;
+    },
+  },
+
+  sessions: {
+    getAll: async () => {
+      const { data } = await supabase.from('sessions').select('*, session_signups(member_id)').eq('gym_id', GYM_CONFIG.id).order('date').order('start_time');
+      return (data || []).map(mapSession);
+    },
+    getById: async (id) => {
+      const { data } = await supabase.from('sessions').select('*, session_signups(member_id)').eq('id', id).single();
+      return mapSession(data);
+    },
+    getByField: async (field, value) => {
+      const dbField = { gymId: 'gym_id', coachId: 'coach_id', workoutId: 'workout_id', date: 'date' }[field] || field;
+      const { data } = await supabase.from('sessions').select('*, session_signups(member_id)').eq(dbField, value);
+      return (data || []).map(mapSession);
+    },
+    create: async (item) => {
+      const { data } = await supabase.from('sessions').insert({
+        gym_id: item.gymId || GYM_CONFIG.id, coach_id: item.coachId,
+        title: item.title, date: item.date,
+        start_time: item.startTime, end_time: item.endTime,
+        capacity: item.capacity || 16, workout_id: item.workoutId || null,
+      }).select('*, session_signups(member_id)').single();
+      return mapSession(data);
+    },
+    update: async (id, updates) => {
+      // Handle signups separately
+      if (updates.signups !== undefined) {
+        // This is handled through session_signups table directly
+        // The update call for signups is a no-op here — use signup/cancel methods
+      }
+      const dbUpdates = {};
+      if (updates.title !== undefined) dbUpdates.title = updates.title;
+      if (updates.coachId !== undefined) dbUpdates.coach_id = updates.coachId;
+      if (updates.capacity !== undefined) dbUpdates.capacity = updates.capacity;
+      if (updates.workoutId !== undefined) dbUpdates.workout_id = updates.workoutId;
+      if (Object.keys(dbUpdates).length > 0) {
+        await supabase.from('sessions').update(dbUpdates).eq('id', id);
+      }
+      const { data } = await supabase.from('sessions').select('*, session_signups(member_id)').eq('id', id).single();
+      return mapSession(data);
+    },
+    delete: async (id) => {
+      await supabase.from('session_signups').delete().eq('session_id', id);
+      await supabase.from('sessions').delete().eq('id', id);
+      return true;
+    },
+    // Signup/cancel helpers
+    signup: async (sessionId, memberId) => {
+      await supabase.from('session_signups').insert({ session_id: sessionId, member_id: memberId });
+    },
+    cancel: async (sessionId, memberId) => {
+      await supabase.from('session_signups').delete().eq('session_id', sessionId).eq('member_id', memberId);
+    },
+  },
+
+  prs: {
+    getAll: async () => {
+      const { data } = await supabase.from('personal_records').select('*').order('date', { ascending: false });
+      return (data || []).map(mapPr);
+    },
+    getById: async (id) => {
+      const { data } = await supabase.from('personal_records').select('*').eq('id', id).single();
+      return mapPr(data);
+    },
+    getByField: async (field, value) => {
+      const dbField = { memberId: 'member_id' }[field] || field;
+      const { data } = await supabase.from('personal_records').select('*').eq(dbField, value).order('date', { ascending: false });
+      return (data || []).map(mapPr);
+    },
+    create: async (item) => {
+      const { data } = await supabase.from('personal_records').insert({
+        member_id: item.memberId, category: item.category,
+        name: item.name, value: item.value, unit: item.unit,
+        date: item.date || new Date().toISOString(), notes: item.notes || null,
+      }).select().single();
+      return mapPr(data);
+    },
+    update: async (id, updates) => {
+      const { data } = await supabase.from('personal_records').update(updates).eq('id', id).select().single();
+      return mapPr(data);
+    },
+    delete: async (id) => {
+      await supabase.from('personal_records').delete().eq('id', id);
+      return true;
+    },
+  },
+
+  results: {
+    getAll: async () => {
+      const { data } = await supabase.from('workout_results').select('*').order('date', { ascending: false });
+      return (data || []).map(mapResult);
+    },
+    getById: async (id) => {
+      const { data } = await supabase.from('workout_results').select('*').eq('id', id).single();
+      return mapResult(data);
+    },
+    getByField: async (field, value) => {
+      const dbField = { memberId: 'member_id', workoutId: 'workout_id', sessionId: 'session_id' }[field] || field;
+      const { data } = await supabase.from('workout_results').select('*').eq(dbField, value).order('date', { ascending: false });
+      return (data || []).map(mapResult);
+    },
+    create: async (item) => {
+      const { data } = await supabase.from('workout_results').insert({
+        member_id: item.memberId, workout_id: item.workoutId || null,
+        session_id: item.sessionId || null, score: item.score,
+        score_type: item.scoreType || 'time', rx: item.rx !== undefined ? item.rx : true,
+        notes: item.notes || null, date: item.date || new Date().toISOString(),
+        high_fives: item.highFives || [],
+      }).select().single();
+      return mapResult(data);
+    },
+    update: async (id, updates) => {
+      const dbUpdates = {};
+      if (updates.score !== undefined) dbUpdates.score = updates.score;
+      if (updates.scoreType !== undefined) dbUpdates.score_type = updates.scoreType;
+      if (updates.rx !== undefined) dbUpdates.rx = updates.rx;
+      if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+      if (updates.highFives !== undefined) dbUpdates.high_fives = updates.highFives;
+      const { data } = await supabase.from('workout_results').update(dbUpdates).eq('id', id).select().single();
+      return mapResult(data);
+    },
+    delete: async (id) => {
+      await supabase.from('workout_results').delete().eq('id', id);
+      return true;
+    },
+  },
+
+  billing: {
+    getAll: async () => {
+      const { data } = await supabase.from('billing_records').select('*').order('date', { ascending: false });
+      return (data || []).map(mapBilling);
+    },
+    getById: async (id) => {
+      const { data } = await supabase.from('billing_records').select('*').eq('id', id).single();
+      return mapBilling(data);
+    },
+    getByField: async (field, value) => {
+      const dbField = { memberId: 'member_id' }[field] || field;
+      const { data } = await supabase.from('billing_records').select('*').eq(dbField, value).order('date', { ascending: false });
+      return (data || []).map(mapBilling);
+    },
+    create: async (item) => {
+      const { data } = await supabase.from('billing_records').insert({
+        member_id: item.memberId, amount: item.amount,
+        description: item.description, date: item.date || new Date().toISOString(),
+        status: item.status || 'pending', method: item.method || 'card',
+      }).select().single();
+      return mapBilling(data);
+    },
+    update: async (id, updates) => {
+      const { data } = await supabase.from('billing_records').update(updates).eq('id', id).select().single();
+      return mapBilling(data);
+    },
+    delete: async (id) => {
+      await supabase.from('billing_records').delete().eq('id', id);
+      return true;
+    },
+  },
+
   auth: {
-    login: async (email, pw) => { const all = await services.members.getAll(); const m = all.find((u) => u.email === email && u.password === pw); if (!m) throw new Error("Invalid email or password"); return { ...m }; },
-    signup: async ({ email, password, firstName, lastName }) => { const all = await services.members.getAll(); if (all.find((u) => u.email === email)) throw new Error("Email already in use"); return services.members.create({ email, password, firstName, lastName, role: "member", avatar: null, phone: "", emergencyContact: { name: "", phone: "", relation: "" }, membershipType: "unlimited", membershipStatus: "active", joinDate: new Date().toISOString(), gymId: GYM_CONFIG.id }); },
+    login: async (email, password) => {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw new Error(error.message);
+      const { data: member } = await supabase.from('members').select('*').eq('auth_id', data.user.id).single();
+      if (!member) throw new Error("Member profile not found");
+      return mapMember(member);
+    },
+    signup: async ({ email, password, firstName, lastName }) => {
+      const { data, error } = await supabase.auth.signUp({
+        email, password,
+        options: { data: { first_name: firstName, last_name: lastName } },
+      });
+      if (error) throw new Error(error.message);
+      // The trigger function auto-creates the member row
+      // Wait a moment for the trigger to complete, then fetch
+      await new Promise(r => setTimeout(r, 500));
+      const { data: member } = await supabase.from('members').select('*').eq('auth_id', data.user.id).single();
+      return mapMember(member);
+    },
+    logout: async () => {
+      await supabase.auth.signOut();
+    },
+    getSession: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+      const { data: member } = await supabase.from('members').select('*').eq('auth_id', session.user.id).single();
+      return mapMember(member);
+    },
   },
 };
+
+// Keep a reference for components that look up members by ID
+// This gets populated when data loads
+let membersCache = [];
 
 // ============================================================
 // CONTEXT
@@ -283,8 +503,8 @@ const S = {
 // LOGIN
 // ============================================================
 const LoginScreen = ({ onSwitch, onLogin }) => {
-  const [email, setEmail] = useState("chase@tektonfitness.com");
-  const [pw, setPw] = useState("demo123");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const go = async () => { setErr(""); setBusy(true); try { onLogin(await services.auth.login(email, pw)); } catch (e) { setErr(e.message); } setBusy(false); };
@@ -298,7 +518,7 @@ const LoginScreen = ({ onSwitch, onLogin }) => {
       {err&&<div style={S.err}>{err}</div>}
       <button style={{...S.btn1,opacity:busy?0.6:1}} onClick={go} disabled={busy}>{busy?"Signing In...":"Sign In"}</button>
       <button style={S.btn2} onClick={onSwitch}>Create Account</button>
-      <div style={{textAlign:"center",marginTop:THEME.spacing.lg,color:THEME.colors.textMuted,fontSize:"12px"}}>Demo: chase@tektonfitness.com / demo123</div>
+      <div style={{textAlign:"center",marginTop:THEME.spacing.lg,color:THEME.colors.textMuted,fontSize:"12px"}}>{GYM_CONFIG.name} · {GYM_CONFIG.location}</div>
     </div>
   );
 };
@@ -340,16 +560,26 @@ const DashboardScreen = () => {
   const [wod, setWod] = useState(null);
   const [results, setResults] = useState([]);
   const [myPrs, setMyPrs] = useState([]);
+  const [allWorkouts, setAllWorkouts] = useState([]);
   useEffect(() => { (async () => {
     const td = today();
-    setSessions((await services.sessions.getAll()).filter(s => s.date === td));
-    setWod((await services.workouts.getAll()).find(w => w.date.startsWith(td)) || null);
-    setResults((await services.results.getAll()).slice(-4).reverse());
-    setMyPrs((await services.prs.getByField("memberId", user.id)).slice(0, 3));
+    const [allMembers, allSessions, wods, allResults, myPrsData] = await Promise.all([
+      services.members.getAll(),
+      services.sessions.getAll(),
+      services.workouts.getAll(),
+      services.results.getAll(),
+      services.prs.getByField("memberId", user.id),
+    ]);
+    membersCache = allMembers;
+    setSessions(allSessions.filter(s => s.date === td));
+    setAllWorkouts(wods);
+    setWod(wods.find(w => w.date.startsWith(td)) || null);
+    setResults(allResults.slice(0, 4));
+    setMyPrs(myPrsData.slice(0, 3));
   })(); }, [user.id]);
   const greet = () => { const h=new Date().getHours(); return h<12?"Morning":h<17?"Afternoon":"Evening"; };
-  const mName = (id) => { const m=MOCK_MEMBERS.find(x=>x.id===id); return m?`${m.firstName} ${m.lastName.charAt(0)}.`:"?"; };
-  const coach = (id) => { const m=MOCK_MEMBERS.find(x=>x.id===id); return m?m.firstName:"Coach"; };
+  const mName = (id) => { const m=membersCache.find(x=>x.id===id); return m?`${m.firstName} ${m.lastName.charAt(0)}.`:"?"; };
+  const coach = (id) => { const m=membersCache.find(x=>x.id===id); return m?m.firstName:"Coach"; };
   return (
     <div style={S.screen}>
       <div style={{marginBottom:THEME.spacing.xl}}>
@@ -412,7 +642,7 @@ const DashboardScreen = () => {
         <div style={S.cardLbl}>Recent Results</div>
         {results.map((r,i)=><div key={r.id} style={{padding:"10px 0",borderBottom:i<results.length-1?`1px solid ${THEME.colors.border}`:"none"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}><div style={S.avatar}>{mName(r.memberId).charAt(0)}</div><div><div style={{fontWeight:"600",fontSize:"14px"}}>{mName(r.memberId)}</div><div style={{color:THEME.colors.textMuted,fontSize:"12px"}}>{MOCK_WORKOUTS.find(w=>w.id===r.workoutId)?.title||"WOD"}</div></div></div>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}><div style={S.avatar}>{mName(r.memberId).charAt(0)}</div><div><div style={{fontWeight:"600",fontSize:"14px"}}>{mName(r.memberId)}</div><div style={{color:THEME.colors.textMuted,fontSize:"12px"}}>{allWorkouts.find(w=>w.id===r.workoutId)?.title||"WOD"}</div></div></div>
             <div style={{textAlign:"right"}}><div style={{fontFamily:THEME.fonts.mono,fontSize:"20px",fontWeight:"700",color:THEME.colors.primary}}>{r.score}</div>{r.rx&&<div style={{...S.badge,background:THEME.colors.accentSubtle,color:THEME.colors.accent,fontSize:"9px"}}>Rx</div>}</div>
           </div>
           {r.notes&&<div style={{color:THEME.colors.textMuted,fontSize:"12px",marginTop:"4px",marginLeft:"52px",fontStyle:"italic"}}>{r.notes}</div>}
@@ -453,7 +683,7 @@ const ScheduleScreen = () => {
     setActioningId(sessionId);
     const s = allSessions.find(x => x.id === sessionId);
     if (!s || s.signups.includes(user.id) || s.signups.length >= s.capacity) { setActioningId(null); return; }
-    await services.sessions.update(sessionId, { signups: [...s.signups, user.id] });
+    await services.sessions.signup(sessionId, user.id);
     await loadSessions();
     setActioningId(null);
   };
@@ -462,7 +692,7 @@ const ScheduleScreen = () => {
     setActioningId(sessionId);
     const s = allSessions.find(x => x.id === sessionId);
     if (!s) { setActioningId(null); return; }
-    await services.sessions.update(sessionId, { signups: s.signups.filter(id => id !== user.id) });
+    await services.sessions.cancel(sessionId, user.id);
     await loadSessions();
     setActioningId(null);
   };
@@ -475,7 +705,7 @@ const ScheduleScreen = () => {
     setSelectedDate(newWeek[0]);
   };
 
-  const coach = (id) => { const m = MOCK_MEMBERS.find(x => x.id === id); return m ? m.firstName : "Coach"; };
+  const coach = (id) => { const m = membersCache.find(x => x.id === id); return m ? m.firstName : "Coach"; };
   const isToday = selectedDate === today();
   const isPast = (date, time) => {
     const now = new Date();
@@ -594,7 +824,7 @@ const ScheduleScreen = () => {
         {/* Coach attribution */}
         {w.createdBy && (
           <div style={{textAlign:"center",padding:THEME.spacing.md,color:THEME.colors.textMuted,fontSize:"12px"}}>
-            Programmed by Coach {(() => { const m = MOCK_MEMBERS.find(x => x.id === w.createdBy); return m ? m.firstName : "Staff"; })()}
+            Programmed by Coach {(() => { const m = membersCache.find(x => x.id === w.createdBy); return m ? m.firstName : "Staff"; })()}
           </div>
         )}
       </div>
@@ -2737,8 +2967,50 @@ const MainApp = () => {
 export default function App() {
   const [user,setUser] = useState(null);
   const [view,setView] = useState("login");
+  const [loading, setLoading] = useState(true);
   const login = useCallback((u)=>setUser(u),[]);
-  const logout = useCallback(()=>{setUser(null);setView("login");},[]);
+  const logout = useCallback(async ()=>{
+    await services.auth.logout();
+    setUser(null);
+    setView("login");
+  },[]);
+
+  // Check for existing session on app load
+  useEffect(() => {
+    (async () => {
+      try {
+        const member = await services.auth.getSession();
+        if (member) {
+          setUser(member);
+          // Populate members cache
+          membersCache = await services.members.getAll();
+        }
+      } catch (e) {
+        console.log("No existing session");
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+          *{margin:0;padding:0;box-sizing:border-box;}
+          body{background:#000;}
+        `}</style>
+        <div style={{...S.app,display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={S.logoBox}>{GYM_CONFIG.shortName.charAt(0)}</div>
+            <div style={{fontFamily:THEME.fonts.display,fontSize:"24px",color:THEME.colors.text,letterSpacing:"3px",marginTop:"16px"}}>{GYM_CONFIG.shortName}</div>
+            <div style={{color:THEME.colors.textMuted,fontSize:"13px",marginTop:"8px"}}>Loading...</div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <style>{`
