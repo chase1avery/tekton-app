@@ -706,6 +706,8 @@ const ScheduleScreen = () => {
   };
 
   const coach = (id) => { const m = membersCache.find(x => x.id === id); return m ? m.firstName : "Coach"; };
+  const coachObj = (id) => membersCache.find(x => x.id === id);
+  const [coachPopup, setCoachPopup] = useState(null);
   const isToday = selectedDate === today();
   const isPast = (date, time) => {
     const now = new Date();
@@ -930,7 +932,7 @@ const ScheduleScreen = () => {
                 </div>
                 <div style={{color:THEME.colors.textSecondary,fontSize:"13px",display:"flex",alignItems:"center",gap:"12px"}}>
                   <span style={{display:"flex",alignItems:"center",gap:"4px"}}><I.clock size={13} color={THEME.colors.textMuted}/> {fmtTime(s.startTime)} – {fmtTime(s.endTime)}</span>
-                  <span>Coach {coach(s.coachId)}</span>
+                  <span onClick={(e)=>{e.stopPropagation();const c=coachObj(s.coachId);if(c?.avatar)setCoachPopup(c);}} style={{cursor:coachObj(s.coachId)?.avatar?"pointer":"default"}}>Coach {coach(s.coachId)}</span>
                 </div>
               </div>
               <div style={{textAlign:"right",minWidth:"55px"}}>
@@ -999,6 +1001,28 @@ const ScheduleScreen = () => {
           </div>
         );
       })}
+
+      {/* Coach Avatar Popup */}
+      {coachPopup && coachPopup.avatar && (
+        <div onClick={()=>setCoachPopup(null)} style={{
+          position:"fixed",inset:0,zIndex:9999,
+          background:"rgba(0,0,0,0.7)",backdropFilter:"blur(8px)",
+          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+          cursor:"pointer",
+        }}>
+          <img src={coachPopup.avatar} alt="" style={{
+            width:"160px",height:"160px",borderRadius:THEME.radius.full,objectFit:"cover",
+            border:`3px solid ${THEME.colors.primary}`,marginBottom:THEME.spacing.md,
+          }} />
+          <div style={{fontFamily:THEME.fonts.display,fontSize:"24px",color:THEME.colors.white,letterSpacing:"1px"}}>
+            {coachPopup.firstName} {coachPopup.lastName}
+          </div>
+          <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,marginTop:THEME.spacing.sm,fontSize:"12px",padding:"4px 14px"}}>
+            {coachPopup.role}
+          </div>
+          <div style={{color:THEME.colors.textMuted,fontSize:"12px",marginTop:THEME.spacing.lg}}>Tap anywhere to close</div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1078,12 +1102,35 @@ const ProfileScreen = () => {
 
       {/* Avatar + Name Card */}
       <div style={{...S.card,display:"flex",alignItems:"center",gap:THEME.spacing.lg}}>
-        <div style={{
-          width:"64px",height:"64px",borderRadius:THEME.radius.full,flexShrink:0,
-          background:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
-          display:"flex",alignItems:"center",justifyContent:"center",
-          fontFamily:THEME.fonts.display,fontSize:"26px",color:THEME.colors.white,
-        }}>{user.firstName.charAt(0)}{user.lastName.charAt(0)}</div>
+        <label style={{cursor:"pointer",position:"relative",flexShrink:0}}>
+          {user.avatar ? (
+            <img src={user.avatar} alt="" style={{width:"64px",height:"64px",borderRadius:THEME.radius.full,objectFit:"cover"}} />
+          ) : (
+            <div style={{
+              width:"64px",height:"64px",borderRadius:THEME.radius.full,
+              background:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontFamily:THEME.fonts.display,fontSize:"26px",color:THEME.colors.white,
+            }}>{user.firstName.charAt(0)}{user.lastName.charAt(0)}</div>
+          )}
+          <div style={{
+            position:"absolute",bottom:"-2px",right:"-2px",width:"22px",height:"22px",
+            borderRadius:"50%",background:THEME.colors.primary,display:"flex",alignItems:"center",justifyContent:"center",
+            border:`2px solid ${THEME.colors.surface}`,
+          }}><I.edit size={10} color={THEME.colors.white}/></div>
+          <input type="file" accept="image/*" style={{display:"none"}} onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const ext = file.name.split(".").pop();
+            const path = `avatars/${user.id}.${ext}`;
+            const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+            if (upErr) { console.error("Upload error:", upErr); return; }
+            const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+            const avatarUrl = urlData.publicUrl + "?t=" + Date.now();
+            const updated = await services.members.update(user.id, { avatar: avatarUrl });
+            login(updated);
+          }} />
+        </label>
         <div>
           <div style={{fontFamily:THEME.fonts.display,fontSize:"22px",letterSpacing:"1px"}}>{user.firstName} {user.lastName}</div>
           <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginTop:"4px"}}>
@@ -2059,6 +2106,7 @@ const AdminScreen = () => {
 
   // Roster filter
   const [rosterFilter, setRosterFilter] = useState("all");
+  const [adminViewWod, setAdminViewWod] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2236,6 +2284,33 @@ const AdminScreen = () => {
 
   return (
     <div style={S.screen}>
+      {/* WOD Detail View */}
+      {adminViewWod && (() => {
+        const w = adminViewWod;
+        const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date(w.date).getDay()];
+        return (
+          <>
+            <button onClick={() => setAdminViewWod(null)} style={{display:"flex",alignItems:"center",gap:"6px",background:"none",border:"none",cursor:"pointer",padding:"0",marginBottom:THEME.spacing.lg}}>
+              <I.chevL size={20} color={THEME.colors.primary} /><span style={{fontFamily:THEME.fonts.display,fontSize:"14px",letterSpacing:"1.5px",color:THEME.colors.primary}}>Back to Admin</span>
+            </button>
+            <div style={{marginBottom:THEME.spacing.xl}}>
+              <div style={{color:THEME.colors.textMuted,fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"3px",marginBottom:"4px"}}>{dayName}</div>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"34px",letterSpacing:"1px",lineHeight:"1.1"}}>{w.title}</div>
+              <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginTop:"8px",flexWrap:"wrap"}}>
+                <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"11px",padding:"4px 12px"}}>{w.type}</div>
+                {w.timeCap && <div style={{...S.badge,background:THEME.colors.surfaceLight,color:THEME.colors.textSecondary,fontSize:"11px",padding:"4px 12px"}}>{w.timeCap} min cap</div>}
+              </div>
+              {w.description && <div style={{color:THEME.colors.textSecondary,fontSize:"15px",marginTop:THEME.spacing.sm,lineHeight:"1.5"}}>{w.description}</div>}
+            </div>
+            {w.warmup && <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.warning}`}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}><span style={{fontSize:"18px"}}>🔥</span><div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.warning}}>Warmup</div></div><div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.warmup}</div></div>}
+            {w.strength && <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.accent}`}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}><span style={{fontSize:"18px"}}>🏋️</span><div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.accent}}>Strength</div></div><div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.strength}</div></div>}
+            {w.movements && w.movements.length > 0 && <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.primary}`}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}><span style={{fontSize:"18px"}}>⏱️</span><div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.primary}}>WOD</div></div>{w.movements.map((m,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<w.movements.length-1?`1px solid ${THEME.colors.border}`:"none"}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}><div style={{width:"28px",height:"28px",borderRadius:THEME.radius.sm,background:THEME.colors.surfaceLight,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.textMuted}}>{i+1}</div><span style={{fontWeight:"600",fontSize:"15px"}}>{m.name}</span></div><div style={{textAlign:"right"}}><div style={{fontFamily:THEME.fonts.mono,fontSize:"15px",fontWeight:"600",color:THEME.colors.primary}}>{m.reps}</div>{m.weight&&<div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{m.weight}</div>}</div></div>)}</div>}
+            {w.accessory && <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.textSecondary}`}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}><span style={{fontSize:"18px"}}>💪</span><div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.textSecondary}}>Accessory</div></div><div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.accessory}</div></div>}
+          </>
+        );
+      })()}
+
+      {!adminViewWod && (<>
       <div style={{fontFamily:THEME.fonts.display,fontSize:"28px",letterSpacing:"1px",marginBottom:THEME.spacing.lg}}>Admin</div>
 
       <div style={{display:"flex",gap:"5px",marginBottom:THEME.spacing.lg}}>
@@ -2306,11 +2381,20 @@ const AdminScreen = () => {
             {workouts.slice(0, 5).map((w, i) => (
               <div key={w.id} style={{padding:"8px 0",borderBottom:i<Math.min(4,workouts.length-1)?`1px solid ${THEME.colors.border}`:"none"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
+                  <div style={{flex:1}}>
                     <span style={{fontFamily:THEME.fonts.display,fontSize:"16px"}}>{w.title}</span>
                     <span style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"9px",marginLeft:"8px"}}>{w.type}</span>
                   </div>
-                  <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{results.filter(r=>r.workoutId===w.id).length} results</span>
+                  <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                    <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{results.filter(r=>r.workoutId===w.id).length} results</span>
+                    <button onClick={()=>setAdminViewWod(w)} style={{
+                      display:"flex",alignItems:"center",gap:"4px",padding:"4px 10px",borderRadius:THEME.radius.sm,
+                      border:"none",cursor:"pointer",background:THEME.colors.primarySubtle,
+                    }}>
+                      <span style={{fontFamily:THEME.fonts.display,fontSize:"10px",letterSpacing:"1px",color:THEME.colors.primary}}>View</span>
+                      <I.chevR size={12} color={THEME.colors.primary} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -3054,6 +3138,7 @@ const AdminScreen = () => {
           })}
         </>
       )}
+      </>)}
     </div>
   );
 };
