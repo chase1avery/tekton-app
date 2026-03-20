@@ -423,7 +423,7 @@ const DashboardScreen = () => {
 };
 
 // ============================================================
-// SCHEDULE SCREEN (Phase 2 — NEW)
+// SCHEDULE SCREEN (Phase 2 + WOD Detail View)
 // ============================================================
 const ScheduleScreen = () => {
   const { user } = useAuth();
@@ -431,13 +431,19 @@ const ScheduleScreen = () => {
   const [selectedDate, setSelectedDate] = useState(today());
   const [sessions, setSessions] = useState([]);
   const [allSessions, setAllSessions] = useState([]);
+  const [allWorkouts, setAllWorkouts] = useState([]);
   const [actioningId, setActioningId] = useState(null);
+  const [viewingWod, setViewingWod] = useState(null); // null = schedule list, object = WOD detail
 
   const weekDates = getWeekDates(weekStart);
 
   const loadSessions = useCallback(async () => {
-    const all = await services.sessions.getAll();
+    const [all, wods] = await Promise.all([
+      services.sessions.getAll(),
+      services.workouts.getAll(),
+    ]);
     setAllSessions(all);
+    setAllWorkouts(wods);
     setSessions(all.filter(s => s.date === selectedDate));
   }, [selectedDate]);
 
@@ -477,9 +483,125 @@ const ScheduleScreen = () => {
     return sessionTime < now;
   };
 
-  // Count signups for the selected week
   const myWeekSignups = allSessions.filter(s => weekDates.includes(s.date) && s.signups.includes(user.id)).length;
 
+  // Find a workout for a given date
+  const getWodForDate = (date) => allWorkouts.find(w => w.date.startsWith(date));
+
+  // ===== WOD DETAIL VIEW =====
+  if (viewingWod) {
+    const w = viewingWod;
+    const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date(w.date).getDay()];
+    const dateStr = new Date(w.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+    return (
+      <div style={S.screen}>
+        {/* Back button */}
+        <button onClick={() => setViewingWod(null)} style={{
+          display:"flex",alignItems:"center",gap:"6px",background:"none",border:"none",
+          cursor:"pointer",padding:"0",marginBottom:THEME.spacing.lg,
+        }}>
+          <I.chevL size={20} color={THEME.colors.primary} />
+          <span style={{fontFamily:THEME.fonts.display,fontSize:"14px",letterSpacing:"1.5px",color:THEME.colors.primary}}>Back to Schedule</span>
+        </button>
+
+        {/* Header */}
+        <div style={{marginBottom:THEME.spacing.xl}}>
+          <div style={{color:THEME.colors.textMuted,fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"3px",marginBottom:"4px"}}>{dayName}</div>
+          <div style={{fontFamily:THEME.fonts.display,fontSize:"34px",letterSpacing:"1px",lineHeight:"1.1"}}>{w.title}</div>
+          <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginTop:"8px",flexWrap:"wrap"}}>
+            <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"11px",padding:"4px 12px"}}>{w.type}</div>
+            {w.timeCap && <div style={{...S.badge,background:THEME.colors.surfaceLight,color:THEME.colors.textSecondary,fontSize:"11px",padding:"4px 12px"}}>{w.timeCap} min cap</div>}
+            <span style={{color:THEME.colors.textMuted,fontSize:"12px"}}>{dateStr}</span>
+          </div>
+          {w.description && <div style={{color:THEME.colors.textSecondary,fontSize:"15px",marginTop:THEME.spacing.sm,lineHeight:"1.5"}}>{w.description}</div>}
+        </div>
+
+        {/* Warmup Section */}
+        {w.warmup && (
+          <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.warning}`,marginBottom:THEME.spacing.md}}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+              <span style={{fontSize:"18px"}}>🔥</span>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.warning}}>Warmup</div>
+            </div>
+            <div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.warmup}</div>
+          </div>
+        )}
+
+        {/* Strength Section */}
+        {w.strength && (
+          <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.accent}`,marginBottom:THEME.spacing.md}}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+              <span style={{fontSize:"18px"}}>🏋️</span>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.accent}}>Strength</div>
+            </div>
+            <div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.strength}</div>
+          </div>
+        )}
+
+        {/* WOD Movements Section */}
+        {w.movements && w.movements.length > 0 && (
+          <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.primary}`,marginBottom:THEME.spacing.md}}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+              <span style={{fontSize:"18px"}}>⏱️</span>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.primary}}>WOD</div>
+              {w.timeCap && <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"10px",marginLeft:"auto"}}>{w.timeCap} min</div>}
+            </div>
+            {w.movements.map((m, i) => (
+              <div key={i} style={{
+                display:"flex",justifyContent:"space-between",alignItems:"center",
+                padding:"10px 0",
+                borderBottom: i < w.movements.length - 1 ? `1px solid ${THEME.colors.border}` : "none",
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+                  <div style={{
+                    width:"28px",height:"28px",borderRadius:THEME.radius.sm,
+                    background:THEME.colors.surfaceLight,display:"flex",alignItems:"center",justifyContent:"center",
+                    fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.textMuted,flexShrink:0,
+                  }}>{i + 1}</div>
+                  <div>
+                    <div style={{fontWeight:"600",fontSize:"15px"}}>{m.name}</div>
+                    {m.notes && <div style={{color:THEME.colors.textMuted,fontSize:"11px",marginTop:"2px"}}>{m.notes}</div>}
+                  </div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontFamily:THEME.fonts.mono,fontSize:"15px",fontWeight:"600",color:THEME.colors.primary}}>{m.reps}</div>
+                  {m.weight && <div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{m.weight}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Accessory Section */}
+        {w.accessory && (
+          <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.textSecondary}`,marginBottom:THEME.spacing.md}}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+              <span style={{fontSize:"18px"}}>💪</span>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.textSecondary}}>Accessory Work</div>
+            </div>
+            <div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.accessory}</div>
+          </div>
+        )}
+
+        {/* No programming message */}
+        {!w.warmup && !w.strength && (!w.movements || w.movements.length === 0) && !w.accessory && (
+          <div style={{...S.card,textAlign:"center",padding:THEME.spacing.xl}}>
+            <div style={{color:THEME.colors.textMuted,fontSize:"14px"}}>No detailed programming has been posted for this workout yet.</div>
+          </div>
+        )}
+
+        {/* Coach attribution */}
+        {w.createdBy && (
+          <div style={{textAlign:"center",padding:THEME.spacing.md,color:THEME.colors.textMuted,fontSize:"12px"}}>
+            Programmed by Coach {(() => { const m = MOCK_MEMBERS.find(x => x.id === w.createdBy); return m ? m.firstName : "Staff"; })()}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ===== SCHEDULE LIST VIEW =====
   return (
     <div style={S.screen}>
       <div style={{fontFamily:THEME.fonts.display,fontSize:"28px",letterSpacing:"1px",marginBottom:THEME.spacing.lg}}>Schedule</div>
@@ -528,9 +650,21 @@ const ScheduleScreen = () => {
         </div>
       </div>
 
-      {/* Date Header */}
-      <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.textSecondary,marginBottom:THEME.spacing.md}}>
-        {isToday ? "Today" : fmtLong(selectedDate)}
+      {/* Date Header + View WOD button */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:THEME.spacing.md}}>
+        <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.textSecondary}}>
+          {isToday ? "Today" : fmtLong(selectedDate)}
+        </div>
+        {getWodForDate(selectedDate) && (
+          <button onClick={() => setViewingWod(getWodForDate(selectedDate))} style={{
+            display:"flex",alignItems:"center",gap:"6px",
+            padding:"8px 16px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+            background:THEME.colors.primarySubtle,
+          }}>
+            <span style={{fontFamily:THEME.fonts.display,fontSize:"12px",letterSpacing:"1.5px",color:THEME.colors.primary}}>View WOD</span>
+            <I.chevR size={14} color={THEME.colors.primary} />
+          </button>
+        )}
       </div>
 
       {/* Session List */}
@@ -548,6 +682,7 @@ const ScheduleScreen = () => {
         const past = isPast(s.date, s.startTime);
         const actioning = actioningId === s.id;
         const spotsLeft = s.capacity - s.signups.length;
+        const sessionWod = s.workoutId ? allWorkouts.find(w => w.id === s.workoutId) : getWodForDate(s.date);
 
         return (
           <div key={s.id} style={{
@@ -578,6 +713,27 @@ const ScheduleScreen = () => {
                 </div>
               </div>
             </div>
+
+            {/* View WOD button per session */}
+            {sessionWod && (
+              <button onClick={() => setViewingWod(sessionWod)} style={{
+                display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",
+                marginTop:THEME.spacing.sm,padding:"8px 12px",borderRadius:THEME.radius.md,
+                background:THEME.colors.surfaceLight,border:"none",cursor:"pointer",
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+                  <span style={{fontSize:"14px"}}>⏱️</span>
+                  <div style={{textAlign:"left"}}>
+                    <div style={{fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.text,letterSpacing:"1px"}}>{sessionWod.title}</div>
+                    <div style={{fontSize:"11px",color:THEME.colors.textMuted}}>{sessionWod.type}{sessionWod.timeCap ? ` · ${sessionWod.timeCap} min` : ""}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                  <span style={{fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1.5px",color:THEME.colors.primary}}>View</span>
+                  <I.chevR size={14} color={THEME.colors.primary} />
+                </div>
+              </button>
+            )}
 
             {/* Action Button */}
             {!past && (
@@ -1630,6 +1786,11 @@ const AdminScreen = () => {
   const [schedForm, setSchedForm] = useState({ title:"CrossFit", date:today(), startTime:"05:00", endTime:"06:00", capacity:"16", coachId:user.id });
   const [schedSaving, setSchedSaving] = useState(false);
   const [schedSaved, setSchedSaved] = useState(false);
+  const [schedWodMode, setSchedWodMode] = useState("none"); // "none" | "existing" | "new"
+  const [schedSelWodId, setSchedSelWodId] = useState(""); // selected existing workout ID
+  const [schedNewWod, setSchedNewWod] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", movements:[] });
+  const [schedNewMov, setSchedNewMov] = useState({ name:"", reps:"", weight:"" });
+  const [schedMovSearch, setSchedMovSearch] = useState("");
 
   // Roster filter
   const [rosterFilter, setRosterFilter] = useState("all");
@@ -1737,17 +1898,57 @@ const AdminScreen = () => {
   const handleAddSession = async () => {
     if (!schedForm.title || !schedForm.date || !schedForm.startTime) return;
     setSchedSaving(true);
+
+    let workoutId = null;
+
+    // If linking an existing workout
+    if (schedWodMode === "existing" && schedSelWodId) {
+      workoutId = schedSelWodId;
+    }
+
+    // If creating a new workout inline
+    if (schedWodMode === "new" && schedNewWod.title) {
+      const newWod = await services.workouts.create({
+        gymId: GYM_CONFIG.id, createdBy: schedForm.coachId,
+        date: schedForm.date + "T00:00:00Z", title: schedNewWod.title,
+        type: schedNewWod.type, description: schedNewWod.description,
+        warmup: schedNewWod.warmup || null,
+        strength: schedNewWod.strength || null,
+        accessory: schedNewWod.accessory || null,
+        movements: schedNewWod.movements,
+        timeCap: schedNewWod.timeCap ? Number(schedNewWod.timeCap) : null, rounds: null,
+      });
+      workoutId = newWod.id;
+    }
+
     await services.sessions.create({
       gymId: GYM_CONFIG.id, coachId: schedForm.coachId,
       title: schedForm.title, date: schedForm.date,
       startTime: schedForm.startTime, endTime: schedForm.endTime,
       capacity: Number(schedForm.capacity) || 16,
-      signups: [], workoutId: null,
+      signups: [], workoutId,
     });
     setSchedSaving(false); setSchedSaved(true);
+    setSchedWodMode("none"); setSchedSelWodId("");
+    setSchedNewWod({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", movements:[] });
+    setSchedNewMov({ name:"", reps:"", weight:"" });
     await load();
     setTimeout(() => setSchedSaved(false), 1500);
   };
+
+  // Schedule WOD builder helpers
+  const addSchedMovement = () => {
+    if (!schedNewMov.name || !schedNewMov.reps) return;
+    setSchedNewWod(f => ({ ...f, movements: [...f.movements, { ...schedNewMov, weight: schedNewMov.weight || null, notes: null }] }));
+    setSchedNewMov({ name: "", reps: "", weight: "" });
+    setSchedMovSearch("");
+  };
+  const removeSchedMovement = (idx) => {
+    setSchedNewWod(f => ({ ...f, movements: f.movements.filter((_, i) => i !== idx) }));
+  };
+  const schedFilteredMovements = schedMovSearch
+    ? MOVEMENT_LIBRARY.filter(m => m.toLowerCase().includes(schedMovSearch.toLowerCase()))
+    : [];
 
   const deleteSession = async (id) => {
     await services.sessions.delete(id);
@@ -2216,31 +2417,271 @@ const AdminScreen = () => {
                 ))}
               </div>
             </div>
-
-            <button onClick={handleAddSession} disabled={schedSaving} style={{
-              ...S.btn1,marginTop:0,opacity:schedSaving?0.5:1,
-            }}>
-              {schedSaved?"Session Added!":schedSaving?"Adding...":"Add Session"}
-            </button>
           </div>
 
-          {/* Today's schedule */}
-          <div style={{...S.cardLbl,marginTop:THEME.spacing.lg,marginBottom:THEME.spacing.sm}}>Today's Schedule ({todaySessions.length} classes)</div>
-          {todaySessions.map(s => (
-            <div key={s.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px",display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
-              <div style={{width:"3px",height:"40px",borderRadius:"2px",background:THEME.colors.primary,flexShrink:0}} />
-              <div style={{flex:1}}>
-                <div style={{fontWeight:"600",fontSize:"14px"}}>{s.title}</div>
-                <div style={{color:THEME.colors.textSecondary,fontSize:"12px"}}>{fmtTime(s.startTime)}–{fmtTime(s.endTime)} · {coachName(s.coachId)}</div>
-              </div>
-              <div style={{textAlign:"right",marginRight:"8px"}}>
-                <div style={{fontFamily:THEME.fonts.mono,fontSize:"14px"}}>{s.signups.length}/{s.capacity}</div>
-              </div>
-              <button onClick={()=>deleteSession(s.id)} style={{background:"none",border:"none",cursor:"pointer",padding:"6px"}}>
-                <I.trash size={14} color={THEME.colors.error} />
-              </button>
+          {/* WORKOUT ASSIGNMENT */}
+          <div style={S.card}>
+            <div style={S.cardLbl}>Assign Workout</div>
+
+            {/* Mode selector */}
+            <div style={{display:"flex",gap:"6px",marginBottom:THEME.spacing.md}}>
+              {[{id:"none",l:"No Workout"},{id:"existing",l:"Existing WOD"},{id:"new",l:"+ Create New"}].map(m=>(
+                <button key={m.id} onClick={()=>{setSchedWodMode(m.id);setSchedSelWodId("");}} style={{
+                  flex:1,padding:"10px 4px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                  background:schedWodMode===m.id?THEME.colors.primary:THEME.colors.surfaceLight,
+                  color:schedWodMode===m.id?THEME.colors.white:THEME.colors.textSecondary,
+                  fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1px",
+                }}>{m.l}</button>
+              ))}
             </div>
-          ))}
+
+            {/* EXISTING WOD SELECTOR */}
+            {schedWodMode === "existing" && (
+              <div>
+                <label style={{...S.lbl,fontSize:"11px"}}>Select a Workout</label>
+                {workouts.length === 0 && <div style={{color:THEME.colors.textMuted,fontSize:"13px",padding:"8px 0"}}>No workouts created yet. Create one in the Program tab first.</div>}
+                <div style={{maxHeight:"400px",overflowY:"auto"}}>
+                  {[...workouts].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(w => {
+                    const sel = schedSelWodId === w.id;
+                    return (
+                      <button key={w.id} onClick={()=>setSchedSelWodId(sel?"":w.id)} style={{
+                        display:"block",width:"100%",textAlign:"left",padding:"12px",marginBottom:"6px",
+                        borderRadius:THEME.radius.md,cursor:"pointer",
+                        background:sel?THEME.colors.primarySubtle:THEME.colors.surfaceLight,
+                        border:sel?`2px solid ${THEME.colors.primary}`:`2px solid transparent`,
+                        transition:"all 0.15s",
+                      }}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div>
+                            <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",color:sel?THEME.colors.primary:THEME.colors.text}}>{w.title}</div>
+                            <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"3px"}}>
+                              <span style={{...S.badge,background:sel?THEME.colors.primary+"22":THEME.colors.border,color:sel?THEME.colors.primary:THEME.colors.textMuted,fontSize:"9px"}}>{w.type}</span>
+                              {w.timeCap && <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.timeCap} min</span>}
+                              <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.movements.length} mov</span>
+                            </div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontFamily:THEME.fonts.display,fontSize:"12px",color:sel?THEME.colors.primary:THEME.colors.textMuted}}>
+                              {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(w.date).getDay()]}
+                            </div>
+                            <div style={{color:THEME.colors.textMuted,fontSize:"10px"}}>{new Date(w.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+                          </div>
+                        </div>
+                        {/* Always show strength + movements */}
+                        {(w.strength || w.movements.length > 0) && (
+                          <div style={{marginTop:"8px",paddingTop:"8px",borderTop:`1px solid ${THEME.colors.border}`}}>
+                            {w.strength && (
+                              <div style={{marginBottom:w.movements.length > 0 ? "8px" : "0"}}>
+                                <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.accent,marginBottom:"3px"}}>🏋️ Strength</div>
+                                <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.4"}}>{w.strength}</div>
+                              </div>
+                            )}
+                            {w.movements.length > 0 && (
+                              <div>
+                                <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.primary,marginBottom:"3px"}}>⏱️ WOD</div>
+                                {w.movements.map((m,mi) => (
+                                  <div key={mi} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:"12px"}}>
+                                    <span style={{color:THEME.colors.text,fontWeight:"500"}}>{m.name}</span>
+                                    <span style={{color:THEME.colors.textMuted,fontFamily:THEME.fonts.mono,fontSize:"11px"}}>{m.reps}{m.weight ? ` @ ${m.weight}` : ""}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {/* Show warmup/accessory labels when selected */}
+                        {sel && (w.warmup || w.accessory) && (
+                          <div style={{marginTop:"6px",paddingTop:"6px",borderTop:`1px solid ${THEME.colors.border}`,display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                            {w.warmup && <span style={{fontSize:"10px",color:THEME.colors.warning}}>🔥 Warmup included</span>}
+                            {w.accessory && <span style={{fontSize:"10px",color:THEME.colors.textMuted}}>💪 Accessory included</span>}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* CREATE NEW WOD INLINE */}
+            {schedWodMode === "new" && (
+              <div>
+                {/* Title + Type */}
+                <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+                  <div style={{flex:2}}>
+                    <label style={{...S.lbl,fontSize:"11px"}}>WOD Title</label>
+                    <input style={S.inp} value={schedNewWod.title} onChange={e=>setSchedNewWod(f=>({...f,title:e.target.value}))}
+                      placeholder="e.g. FRAN, Hero WOD..." onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                  </div>
+                  <div style={{flex:1}}>
+                    <label style={{...S.lbl,fontSize:"11px"}}>Type</label>
+                    <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+                      {["ForTime","AMRAP","EMOM","Strength","Custom"].map(t=>(
+                        <button key={t} onClick={()=>setSchedNewWod(f=>({...f,type:t}))} style={{
+                          padding:"5px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                          background:schedNewWod.type===t?THEME.colors.primarySubtle:THEME.colors.surfaceLight,
+                          color:schedNewWod.type===t?THEME.colors.primary:THEME.colors.textMuted,
+                          fontFamily:THEME.fonts.display,fontSize:"9px",letterSpacing:"1px",
+                        }}>{t}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description + Time Cap */}
+                <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+                  <div style={{flex:2}}>
+                    <label style={{...S.lbl,fontSize:"11px"}}>Description</label>
+                    <input style={S.inp} value={schedNewWod.description} onChange={e=>setSchedNewWod(f=>({...f,description:e.target.value}))}
+                      placeholder="e.g. 21-15-9 for time" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                  </div>
+                  <div style={{flex:1}}>
+                    <label style={{...S.lbl,fontSize:"11px"}}>Time Cap</label>
+                    <input style={S.inp} value={schedNewWod.timeCap} onChange={e=>setSchedNewWod(f=>({...f,timeCap:e.target.value}))}
+                      placeholder="min" type="number" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                  </div>
+                </div>
+
+                {/* Warmup */}
+                <div style={{marginBottom:THEME.spacing.md}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px"}}>
+                    <span style={{fontSize:"14px"}}>🔥</span>
+                    <label style={{...S.lbl,fontSize:"11px",marginBottom:0}}>Warmup</label>
+                  </div>
+                  <textarea style={{...S.inp,minHeight:"70px",resize:"vertical",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
+                    value={schedNewWod.warmup} onChange={e=>setSchedNewWod(f=>({...f,warmup:e.target.value}))}
+                    placeholder="2 Rounds: 400m Run, 10 Air Squats..."
+                    onFocus={e=>(e.target.style.borderColor=THEME.colors.warning)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                </div>
+
+                {/* Strength */}
+                <div style={{marginBottom:THEME.spacing.md}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px"}}>
+                    <span style={{fontSize:"14px"}}>🏋️</span>
+                    <label style={{...S.lbl,fontSize:"11px",marginBottom:0}}>Strength</label>
+                  </div>
+                  <textarea style={{...S.inp,minHeight:"70px",resize:"vertical",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
+                    value={schedNewWod.strength} onChange={e=>setSchedNewWod(f=>({...f,strength:e.target.value}))}
+                    placeholder="Back Squat 5x5 @ 80%..."
+                    onFocus={e=>(e.target.style.borderColor=THEME.colors.accent)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                </div>
+
+                {/* WOD Movements */}
+                <div style={{marginBottom:THEME.spacing.md}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px"}}>
+                    <span style={{fontSize:"14px"}}>⏱️</span>
+                    <label style={{...S.lbl,fontSize:"11px",marginBottom:0}}>WOD Movements ({schedNewWod.movements.length})</label>
+                  </div>
+
+                  {schedNewWod.movements.map((m, idx) => (
+                    <div key={idx} style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,padding:"6px 0",borderBottom:`1px solid ${THEME.colors.border}`}}>
+                      <span style={{fontFamily:THEME.fonts.display,fontSize:"12px",color:THEME.colors.textMuted,width:"18px"}}>{idx+1}</span>
+                      <div style={{flex:1}}>
+                        <span style={{fontWeight:"600",fontSize:"13px"}}>{m.name}</span>
+                        <span style={{color:THEME.colors.textSecondary,fontSize:"11px",marginLeft:"6px"}}>{m.reps}{m.weight?` @ ${m.weight}`:""}</span>
+                      </div>
+                      <button onClick={()=>removeSchedMovement(idx)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px"}}>
+                        <I.trash size={12} color={THEME.colors.error} />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Add movement inline */}
+                  <div style={{background:THEME.colors.surfaceLight,borderRadius:THEME.radius.md,padding:THEME.spacing.sm,marginTop:"6px"}}>
+                    <div style={{marginBottom:"6px",position:"relative"}}>
+                      <input style={{...S.inp,padding:"10px 12px",fontSize:"13px"}} value={schedNewMov.name || schedMovSearch}
+                        onChange={e=>{setSchedMovSearch(e.target.value);setSchedNewMov(f=>({...f,name:e.target.value}));}}
+                        placeholder="Movement name..."
+                        onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)}
+                        onBlur={e=>{setTimeout(()=>setSchedMovSearch(""),200);e.target.style.borderColor=THEME.colors.border;}} />
+                      {schedFilteredMovements.length > 0 && schedMovSearch && (
+                        <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:10,background:THEME.colors.surface,border:`1px solid ${THEME.colors.border}`,borderRadius:THEME.radius.md,maxHeight:"120px",overflowY:"auto"}}>
+                          {schedFilteredMovements.slice(0,5).map(m=>(
+                            <button key={m} onClick={()=>{setSchedNewMov(f=>({...f,name:m}));setSchedMovSearch("");}} style={{
+                              display:"block",width:"100%",padding:"7px 10px",background:"none",border:"none",
+                              textAlign:"left",cursor:"pointer",color:THEME.colors.text,fontSize:"12px",
+                              borderBottom:`1px solid ${THEME.colors.border}`,
+                            }}>{m}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{display:"flex",gap:"6px"}}>
+                      <input style={{...S.inp,flex:1,padding:"8px 10px",fontSize:"13px"}} value={schedNewMov.reps}
+                        onChange={e=>setSchedNewMov(f=>({...f,reps:e.target.value}))} placeholder="Reps"
+                        onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                      <input style={{...S.inp,flex:1,padding:"8px 10px",fontSize:"13px"}} value={schedNewMov.weight}
+                        onChange={e=>setSchedNewMov(f=>({...f,weight:e.target.value}))} placeholder="Weight"
+                        onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                      <button onClick={addSchedMovement} disabled={!schedNewMov.name||!schedNewMov.reps} style={{
+                        padding:"8px 14px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                        background:(!schedNewMov.name||!schedNewMov.reps)?THEME.colors.surfaceHover:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
+                        color:(!schedNewMov.name||!schedNewMov.reps)?THEME.colors.textMuted:THEME.colors.white,
+                        fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1px",flexShrink:0,
+                      }}>Add</button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Accessory */}
+                <div style={{marginBottom:THEME.spacing.sm}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px"}}>
+                    <span style={{fontSize:"14px"}}>💪</span>
+                    <label style={{...S.lbl,fontSize:"11px",marginBottom:0}}>Accessory</label>
+                  </div>
+                  <textarea style={{...S.inp,minHeight:"70px",resize:"vertical",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
+                    value={schedNewWod.accessory} onChange={e=>setSchedNewWod(f=>({...f,accessory:e.target.value}))}
+                    placeholder="3x12 DB Rows, 3x15 GHD Extensions..."
+                    onFocus={e=>(e.target.style.borderColor=THEME.colors.textSecondary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                </div>
+              </div>
+            )}
+
+            {/* No workout message */}
+            {schedWodMode === "none" && (
+              <div style={{color:THEME.colors.textMuted,fontSize:"13px",fontStyle:"italic",padding:"4px 0"}}>
+                Session will be created without an assigned workout.
+              </div>
+            )}
+          </div>
+
+          {/* ADD SESSION BUTTON */}
+          <button onClick={handleAddSession} disabled={schedSaving || (schedWodMode==="new" && !schedNewWod.title)} style={{
+            ...S.btn1,marginBottom:THEME.spacing.lg,
+            opacity:(schedSaving || (schedWodMode==="new" && !schedNewWod.title))?0.5:1,
+          }}>
+            {schedSaved ? "Session Added!" : schedSaving ? "Creating..." : schedWodMode==="new" ? "Create WOD & Add Session" : "Add Session"}
+          </button>
+
+          {/* Today's schedule */}
+          <div style={{...S.cardLbl,marginBottom:THEME.spacing.sm}}>Today's Schedule ({todaySessions.length} classes)</div>
+          {todaySessions.map(s => {
+            const linkedWod = s.workoutId ? workouts.find(w=>w.id===s.workoutId) : null;
+            return (
+              <div key={s.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+                  <div style={{width:"3px",height:"40px",borderRadius:"2px",background:THEME.colors.primary,flexShrink:0}} />
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:"600",fontSize:"14px"}}>{s.title}</div>
+                    <div style={{color:THEME.colors.textSecondary,fontSize:"12px"}}>{fmtTime(s.startTime)}–{fmtTime(s.endTime)} · {coachName(s.coachId)}</div>
+                    {linkedWod && (
+                      <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"4px"}}>
+                        <span style={{fontSize:"12px"}}>⏱️</span>
+                        <span style={{fontFamily:THEME.fonts.display,fontSize:"12px",color:THEME.colors.primary,letterSpacing:"0.5px"}}>{linkedWod.title}</span>
+                        <span style={{...S.badge,fontSize:"8px",background:THEME.colors.primarySubtle,color:THEME.colors.primary}}>{linkedWod.type}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{textAlign:"right",marginRight:"8px"}}>
+                    <div style={{fontFamily:THEME.fonts.mono,fontSize:"14px"}}>{s.signups.length}/{s.capacity}</div>
+                  </div>
+                  <button onClick={()=>deleteSession(s.id)} style={{background:"none",border:"none",cursor:"pointer",padding:"6px"}}>
+                    <I.trash size={14} color={THEME.colors.error} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </>
       )}
     </div>
