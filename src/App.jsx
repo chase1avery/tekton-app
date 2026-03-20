@@ -120,8 +120,9 @@ const mapWorkout = (w) => w ? ({
   id: w.id, gymId: w.gym_id, createdBy: w.created_by,
   date: w.date, title: w.title, type: w.type,
   description: w.description || "", warmup: w.warmup, strength: w.strength,
-  accessory: w.accessory, movements: w.movements || [],
-  timeCap: w.time_cap, rounds: w.rounds,
+  accessory: w.accessory, notes: w.notes || null,
+  movements: w.movements || [],
+  timeCap: w.time_cap, targetTime: w.target_time || null, rounds: w.rounds,
 }) : null;
 
 const mapSession = (s) => s ? ({
@@ -221,6 +222,7 @@ const services = {
         date: item.date, title: item.title, type: item.type || 'ForTime',
         description: item.description || '', warmup: item.warmup || null,
         strength: item.strength || null, accessory: item.accessory || null,
+        notes: item.notes || null, target_time: item.targetTime || null,
         movements: item.movements || [], time_cap: item.timeCap || null,
         rounds: item.rounds || null,
       }).select().single();
@@ -234,6 +236,8 @@ const services = {
       if (updates.warmup !== undefined) dbUpdates.warmup = updates.warmup;
       if (updates.strength !== undefined) dbUpdates.strength = updates.strength;
       if (updates.accessory !== undefined) dbUpdates.accessory = updates.accessory;
+      if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+      if (updates.targetTime !== undefined) dbUpdates.target_time = updates.targetTime;
       if (updates.movements !== undefined) dbUpdates.movements = updates.movements;
       if (updates.timeCap !== undefined) dbUpdates.time_cap = updates.timeCap;
       if (updates.date !== undefined) dbUpdates.date = updates.date;
@@ -632,6 +636,11 @@ const DashboardScreen = () => {
           <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textSecondary,marginBottom:"4px"}}>💪 Accessory</div>
           <div style={{fontSize:"13px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{wod.accessory}</div>
         </div>}
+
+        {wod.notes&&<div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+          <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textMuted,marginBottom:"4px"}}>📝 Notes</div>
+          <div style={{fontSize:"13px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{wod.notes}</div>
+        </div>}
       </div>}
       <div style={S.card}>
         <div style={S.cardLbl}>Today's Classes</div>
@@ -824,8 +833,19 @@ const ScheduleScreen = () => {
           </div>
         )}
 
+        {/* Notes */}
+        {w.notes && (
+          <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.border}`,marginBottom:THEME.spacing.md}}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+              <span style={{fontSize:"18px"}}>📝</span>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.textMuted}}>Coach Notes</div>
+            </div>
+            <div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.notes}</div>
+          </div>
+        )}
+
         {/* No programming message */}
-        {!w.warmup && !w.strength && (!w.movements || w.movements.length === 0) && !w.accessory && (
+        {!w.warmup && !w.strength && (!w.movements || w.movements.length === 0) && !w.accessory && !w.notes && (
           <div style={{...S.card,textAlign:"center",padding:THEME.spacing.xl}}>
             <div style={{color:THEME.colors.textMuted,fontSize:"14px"}}>No detailed programming has been posted for this workout yet.</div>
           </div>
@@ -2101,7 +2121,7 @@ const AdminScreen = () => {
   const [loading, setLoading] = useState(true);
 
   // WOD Builder
-  const [wodForm, setWodForm] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", date:today(), targetTime:"", movements:[] });
+  const [wodForm, setWodForm] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", notes:"", date:today(), targetTime:"", movements:[] });
   const [newMov, setNewMov] = useState({ name:"", reps:"", weights:{Rx:"",["Rx+"]:"",Mastered:"",Scaled:"",Foundation:""}, notes:"" });
   const [wodSaving, setWodSaving] = useState(false);
   const [wodSaved, setWodSaved] = useState(false);
@@ -2122,6 +2142,9 @@ const AdminScreen = () => {
   // Roster filter
   const [rosterFilter, setRosterFilter] = useState("all");
   const [adminViewWod, setAdminViewWod] = useState(null);
+  const [wodSearch, setWodSearch] = useState("");
+  const [wodTypeFilter, setWodTypeFilter] = useState("all");
+  const [wodMovFilter, setWodMovFilter] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2156,6 +2179,8 @@ const AdminScreen = () => {
   };
   const handlePublishWod = async () => {
     if (!wodForm.title) return;
+    // Prevent creating WODs before current date
+    if (wodForm.date < today()) { alert("Cannot create a WOD for a past date."); return; }
     setWodSaving(true);
     await services.workouts.create({
       gymId: GYM_CONFIG.id, createdBy: user.id,
@@ -2164,13 +2189,14 @@ const AdminScreen = () => {
       warmup: wodForm.warmup || null,
       strength: wodForm.strength || null,
       accessory: wodForm.accessory || null,
+      notes: wodForm.notes || null,
       movements: wodForm.movements,
       timeCap: wodForm.timeCap ? Number(wodForm.timeCap) : null,
       targetTime: wodForm.targetTime || null,
       rounds: null,
     });
     setWodSaving(false); setWodSaved(true);
-    setWodForm({ title: "", type: "ForTime", description: "", timeCap: "", warmup: "", strength: "", accessory: "", date: today(), targetTime: "", movements: [] });
+    setWodForm({ title: "", type: "ForTime", description: "", timeCap: "", warmup: "", strength: "", accessory: "", notes: "", date: today(), targetTime: "", movements: [] });
     await load();
     setTimeout(() => setWodSaved(false), 1500);
   };
@@ -2325,6 +2351,7 @@ const AdminScreen = () => {
             {w.strength && <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.accent}`}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}><span style={{fontSize:"18px"}}>🏋️</span><div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.accent}}>Strength</div></div><div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.strength}</div></div>}
             {w.movements && w.movements.length > 0 && <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.primary}`}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}><span style={{fontSize:"18px"}}>⏱️</span><div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.primary}}>WOD</div></div>{w.movements.map((m,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<w.movements.length-1?`1px solid ${THEME.colors.border}`:"none"}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}><div style={{width:"28px",height:"28px",borderRadius:THEME.radius.sm,background:THEME.colors.surfaceLight,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.textMuted}}>{i+1}</div><span style={{fontWeight:"600",fontSize:"15px"}}>{m.name}</span></div><div style={{textAlign:"right"}}><div style={{fontFamily:THEME.fonts.mono,fontSize:"15px",fontWeight:"600",color:THEME.colors.primary}}>{m.reps}</div>{m.weight&&<div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{m.weight}</div>}</div></div>)}</div>}
             {w.accessory && <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.textSecondary}`}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}><span style={{fontSize:"18px"}}>💪</span><div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.textSecondary}}>Accessory</div></div><div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.accessory}</div></div>}
+            {w.notes && <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.border}`}}><div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}><span style={{fontSize:"18px"}}>📝</span><div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.textMuted}}>Coach Notes</div></div><div style={{color:THEME.colors.textSecondary,fontSize:"14px",whiteSpace:"pre-line",lineHeight:"1.7"}}>{w.notes}</div></div>}
           </>
         );
       })()}
@@ -2450,7 +2477,7 @@ const AdminScreen = () => {
                     }}>{m.role}</div>
                     {/* Role toggle buttons */}
                     {m.id !== user.id && (
-                      <div style={{display:"flex",gap:"4px"}}>
+                      <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
                         {m.role !== "admin" && (
                           <button onClick={async ()=>{await services.members.update(m.id,{role:"admin"});await load();}} style={{
                             padding:"4px 8px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
@@ -2470,6 +2497,11 @@ const AdminScreen = () => {
                           background:THEME.colors.surfaceLight,color:THEME.colors.textMuted,
                           fontSize:"9px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
                         }}>Demote</button>
+                        <button onClick={async ()=>{if(window.confirm(`Remove ${m.firstName} ${m.lastName} from ${GYM_CONFIG.name}? This action cannot be undone.`)){await services.members.delete(m.id);await load();}}} style={{
+                          padding:"4px 8px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                          background:"rgba(231,76,60,0.12)",color:THEME.colors.error,
+                          fontSize:"9px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                        }}>Remove</button>
                       </div>
                     )}
                     {m.id === user.id && <span style={{fontSize:"9px",color:THEME.colors.textMuted,fontStyle:"italic"}}>You</span>}
@@ -2506,7 +2538,7 @@ const AdminScreen = () => {
                       }}>{m.membershipStatus}</div>
                     </div>
                   </div>
-                  <div style={{display:"flex",gap:"4px"}}>
+                  <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
                     <button onClick={async ()=>{await services.members.update(m.id,{role:"coach"});await load();}} style={{
                       padding:"6px 10px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
                       background:THEME.colors.accentSubtle,color:THEME.colors.accent,
@@ -2517,6 +2549,11 @@ const AdminScreen = () => {
                       background:THEME.colors.primarySubtle,color:THEME.colors.primary,
                       fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
                     }}>Make Admin</button>
+                    <button onClick={async ()=>{if(window.confirm(`Remove ${m.firstName} ${m.lastName} from ${GYM_CONFIG.name}? This action cannot be undone.`)){await services.members.delete(m.id);await load();}}} style={{
+                      padding:"6px 10px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                      background:"rgba(231,76,60,0.12)",color:THEME.colors.error,
+                      fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                    }}>Remove</button>
                   </div>
                 </div>
               </div>
@@ -2600,8 +2637,9 @@ const AdminScreen = () => {
             <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
               <div style={{flex:2}}>
                 <label style={{...S.lbl,fontSize:"11px"}}>Description</label>
-                <input style={S.inp} value={wodForm.description} onChange={e=>setWodForm(f=>({...f,description:e.target.value}))}
-                  placeholder="e.g. 21-15-9 for time" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                <textarea style={{...S.inp,minHeight:"48px",resize:"none",overflow:"hidden",lineHeight:"1.6",fontFamily:THEME.fonts.body,fontSize:"14px"}}
+                  value={wodForm.description} onChange={e=>{setWodForm(f=>({...f,description:e.target.value}));autoResize(e);}}
+                  placeholder="e.g. 21-15-9 for time 💪" onFocus={e=>{e.target.style.borderColor=THEME.colors.primary;autoResize(e);}} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
               </div>
               <div style={{flex:1}}>
                 <label style={{...S.lbl,fontSize:"11px"}}>Time Cap (min)</label>
@@ -2614,7 +2652,7 @@ const AdminScreen = () => {
             <div style={{marginBottom:THEME.spacing.md}}>
               <label style={{...S.lbl,fontSize:"11px"}}>Scheduled Day</label>
               <div style={{display:"flex",gap:THEME.spacing.sm,alignItems:"center"}}>
-                <input style={{...S.inp,flex:1}} type="date" value={wodForm.date} onChange={e=>setWodForm(f=>({...f,date:e.target.value}))}
+                <input style={{...S.inp,flex:1}} type="date" value={wodForm.date} min={today()} onChange={e=>setWodForm(f=>({...f,date:e.target.value}))}
                   onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
                 <div style={{
                   padding:"14px 16px",borderRadius:THEME.radius.md,
@@ -2783,7 +2821,21 @@ const AdminScreen = () => {
               onFocus={e=>{e.target.style.borderColor=THEME.colors.textSecondary;autoResize(e);}} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
           </div>
 
-          {/* CSV IMPORT — now after Accessory, before Publish */}
+          {/* NOTES SECTION */}
+          <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.border}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+              <span style={{fontSize:"16px"}}>📝</span>
+              <div style={S.cardLbl}>Coach Notes</div>
+            </div>
+            <textarea style={{
+              ...S.inp, minHeight:"48px", resize:"none", lineHeight:"1.6", overflow:"hidden",
+              fontFamily:THEME.fonts.body, fontSize:"14px",
+            }} value={wodForm.notes} onChange={e=>{setWodForm(f=>({...f,notes:e.target.value}));autoResize(e);}}
+              placeholder={"e.g.\nRemind athletes to focus on depth on squats\nScale options: banded pull-ups or ring rows\nCool down with 5 min easy row"}
+              onFocus={e=>{e.target.style.borderColor=THEME.colors.textMuted;autoResize(e);}} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+          </div>
+
+          {/* CSV IMPORT — now after Notes, before Publish */}
           <div style={{...S.card,background:THEME.colors.surfaceLight,border:`1px dashed ${THEME.colors.border}`}}>
             <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
               <span style={{fontSize:"16px"}}>📄</span>
@@ -2822,63 +2874,112 @@ const AdminScreen = () => {
           </button>
 
           {/* Existing WODs */}
-          <div style={{...S.cardLbl,marginBottom:THEME.spacing.sm}}>Published WODs</div>
-          {[...workouts].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(w => (
-            <div key={w.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:w.warmup||w.strength||w.accessory?"8px":"0"}}>
-                <div>
-                  <div style={{fontFamily:THEME.fonts.display,fontSize:"18px"}}>{w.title}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"2px"}}>
-                    <span style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"9px"}}>{w.type}</span>
-                    {w.timeCap && <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.timeCap} min</span>}
-                    <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.movements.length} movements</span>
-                  </div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.primary}}>
-                    {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(w.date).getDay()]}
-                  </div>
-                  <div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{new Date(w.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
-                </div>
+          <div style={{...S.cardLbl,marginBottom:THEME.spacing.sm}}>Published WODs ({workouts.length})</div>
+
+          {/* Search bar */}
+          <div style={{marginBottom:THEME.spacing.sm}}>
+            <input style={{...S.inp,padding:"10px 14px",fontSize:"14px"}} value={wodSearch} onChange={e=>setWodSearch(e.target.value)}
+              placeholder="🔍 Search WODs by name..."
+              onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+          </div>
+
+          {/* Type filter */}
+          <div style={{display:"flex",gap:"5px",marginBottom:THEME.spacing.sm,flexWrap:"wrap"}}>
+            {["all","ForTime","AMRAP","EMOM","Strength","Custom"].map(t=>(
+              <button key={t} onClick={()=>setWodTypeFilter(t)} style={{
+                padding:"5px 12px",borderRadius:THEME.radius.full,border:"none",cursor:"pointer",
+                background:wodTypeFilter===t?THEME.colors.primarySubtle:"transparent",
+                color:wodTypeFilter===t?THEME.colors.primary:THEME.colors.textMuted,
+                fontFamily:THEME.fonts.display,fontSize:"10px",letterSpacing:"1px",
+              }}>{t === "all" ? "All Types" : t}</button>
+            ))}
+          </div>
+
+          {/* Movement filter */}
+          <div style={{marginBottom:THEME.spacing.md}}>
+            <input style={{...S.inp,padding:"8px 12px",fontSize:"13px"}} value={wodMovFilter} onChange={e=>setWodMovFilter(e.target.value)}
+              placeholder="Filter by movement (e.g. Thrusters, Pull-ups)..."
+              onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+          </div>
+
+          {/* Filtered WOD list */}
+          {(() => {
+            let filtered = [...workouts].sort((a,b)=>new Date(b.date)-new Date(a.date));
+            if (wodSearch) filtered = filtered.filter(w => w.title.toLowerCase().includes(wodSearch.toLowerCase()));
+            if (wodTypeFilter !== "all") filtered = filtered.filter(w => w.type === wodTypeFilter);
+            if (wodMovFilter) filtered = filtered.filter(w => w.movements.some(m => m.name.toLowerCase().includes(wodMovFilter.toLowerCase())));
+
+            if (filtered.length === 0) return (
+              <div style={{...S.card,textAlign:"center",padding:THEME.spacing.lg}}>
+                <div style={{color:THEME.colors.textMuted,fontSize:"14px"}}>No WODs match your filters</div>
               </div>
+            );
 
-              {/* Warmup preview */}
-              {w.warmup && (
-                <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                  <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.warning,marginBottom:"4px"}}>🔥 Warmup</div>
-                  <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.warmup}</div>
-                </div>
-              )}
-
-              {/* Strength preview */}
-              {w.strength && (
-                <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                  <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.accent,marginBottom:"4px"}}>🏋️ Strength</div>
-                  <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.strength}</div>
-                </div>
-              )}
-
-              {/* WOD movements */}
-              {w.movements.length > 0 && (
-                <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                  <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.primary,marginBottom:"4px"}}>⏱️ WOD</div>
-                  {w.movements.map((m,i)=>(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:"12px",color:THEME.colors.textSecondary}}>
-                      <span>{m.name}</span><span style={{fontFamily:THEME.fonts.mono,fontSize:"11px"}}>{m.reps}{m.weight?` @ ${m.weight}`:""}</span>
+            return filtered.map(w => (
+              <div key={w.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:w.warmup||w.strength||w.accessory||w.notes?"8px":"0"}}>
+                  <div>
+                    <div style={{fontFamily:THEME.fonts.display,fontSize:"18px"}}>{w.title}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"2px"}}>
+                      <span style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"9px"}}>{w.type}</span>
+                      {w.timeCap && <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.timeCap} min</span>}
+                      <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.movements.length} movements</span>
                     </div>
-                  ))}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.primary}}>
+                      {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(w.date).getDay()]}
+                    </div>
+                    <div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{new Date(w.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+                  </div>
                 </div>
-              )}
 
-              {/* Accessory preview */}
-              {w.accessory && (
-                <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                  <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textSecondary,marginBottom:"4px"}}>💪 Accessory</div>
-                  <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.accessory}</div>
-                </div>
-              )}
-            </div>
-          ))}
+                {/* Warmup preview */}
+                {w.warmup && (
+                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.warning,marginBottom:"4px"}}>🔥 Warmup</div>
+                    <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.warmup}</div>
+                  </div>
+                )}
+
+                {/* Strength preview */}
+                {w.strength && (
+                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.accent,marginBottom:"4px"}}>🏋️ Strength</div>
+                    <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.strength}</div>
+                  </div>
+                )}
+
+                {/* WOD movements */}
+                {w.movements.length > 0 && (
+                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.primary,marginBottom:"4px"}}>⏱️ WOD</div>
+                    {w.movements.map((m,i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:"12px",color:THEME.colors.textSecondary}}>
+                        <span>{m.name}</span><span style={{fontFamily:THEME.fonts.mono,fontSize:"11px"}}>{m.reps}{m.weight?` @ ${m.weight}`:""}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Accessory preview */}
+                {w.accessory && (
+                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textSecondary,marginBottom:"4px"}}>💪 Accessory</div>
+                    <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.accessory}</div>
+                  </div>
+                )}
+
+                {/* Notes preview */}
+                {w.notes && (
+                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textMuted,marginBottom:"4px"}}>📝 Notes</div>
+                    <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.notes}</div>
+                  </div>
+                )}
+              </div>
+            ));
+          })()}
         </>
       )}
 
@@ -3308,6 +3409,7 @@ export default function App() {
         input,textarea{transition:border-color 0.2s ease,box-shadow 0.2s ease;}
         input:focus,textarea:focus{border-color:${THEME.colors.primary} !important;box-shadow:0 0 0 3px ${THEME.colors.primarySubtle};}
         textarea{font-family:${THEME.fonts.body},'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;}
+        input{font-family:${THEME.fonts.body},'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;}
         input,textarea{color-scheme:dark;}
         @media (min-width: 768px) {
           #root > div > div:last-child { padding-left: 32px; padding-right: 32px; }
