@@ -86,6 +86,14 @@ const fmtTime = (t) => {
 
 const today = () => new Date().toISOString().split("T")[0];
 
+// Auto-resize textarea handler
+const autoResize = (e) => {
+  e.target.style.height = "auto";
+  e.target.style.height = e.target.scrollHeight + "px";
+};
+
+const WEIGHT_LEVELS = ["Rx", "Rx+", "Mastered", "Scaled", "Foundation"];
+
 // ============================================================
 // SUPABASE CLIENT
 // ============================================================
@@ -2093,8 +2101,8 @@ const AdminScreen = () => {
   const [loading, setLoading] = useState(true);
 
   // WOD Builder
-  const [wodForm, setWodForm] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", date:today(), movements:[] });
-  const [newMov, setNewMov] = useState({ name:"", reps:"", weight:"", notes:"" });
+  const [wodForm, setWodForm] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", date:today(), targetTime:"", movements:[] });
+  const [newMov, setNewMov] = useState({ name:"", reps:"", weights:{Rx:"",["Rx+"]:"",Mastered:"",Scaled:"",Foundation:""}, notes:"" });
   const [wodSaving, setWodSaving] = useState(false);
   const [wodSaved, setWodSaved] = useState(false);
   const [movSearch, setMovSearch] = useState("");
@@ -2137,8 +2145,10 @@ const AdminScreen = () => {
   // WOD builder
   const addMovement = () => {
     if (!newMov.name || !newMov.reps) return;
-    setWodForm(f => ({ ...f, movements: [...f.movements, { ...newMov, weight: newMov.weight || null, notes: newMov.notes || null }] }));
-    setNewMov({ name: "", reps: "", weight: "", notes: "" });
+    const weights = {};
+    WEIGHT_LEVELS.forEach(l => { if (newMov.weights[l]) weights[l] = newMov.weights[l]; });
+    setWodForm(f => ({ ...f, movements: [...f.movements, { name: newMov.name, reps: newMov.reps, weights, weight: weights.Rx || Object.values(weights)[0] || null, notes: newMov.notes || null }] }));
+    setNewMov({ name: "", reps: "", weights:{Rx:"",["Rx+"]:"",Mastered:"",Scaled:"",Foundation:""}, notes: "" });
     setMovSearch("");
   };
   const removeMovement = (idx) => {
@@ -2155,10 +2165,12 @@ const AdminScreen = () => {
       strength: wodForm.strength || null,
       accessory: wodForm.accessory || null,
       movements: wodForm.movements,
-      timeCap: wodForm.timeCap ? Number(wodForm.timeCap) : null, rounds: null,
+      timeCap: wodForm.timeCap ? Number(wodForm.timeCap) : null,
+      targetTime: wodForm.targetTime || null,
+      rounds: null,
     });
     setWodSaving(false); setWodSaved(true);
-    setWodForm({ title: "", type: "ForTime", description: "", timeCap: "", warmup: "", strength: "", accessory: "", date: today(), movements: [] });
+    setWodForm({ title: "", type: "ForTime", description: "", timeCap: "", warmup: "", strength: "", accessory: "", date: today(), targetTime: "", movements: [] });
     await load();
     setTimeout(() => setWodSaved(false), 1500);
   };
@@ -2635,37 +2647,6 @@ const AdminScreen = () => {
             </div>
           </div>
 
-          {/* CSV IMPORT */}
-          <div style={{...S.card,background:THEME.colors.surfaceLight,border:`1px dashed ${THEME.colors.border}`}}>
-            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
-              <span style={{fontSize:"16px"}}>📄</span>
-              <div style={S.cardLbl}>Import WODs from CSV</div>
-            </div>
-            <div style={{color:THEME.colors.textMuted,fontSize:"12px",marginBottom:THEME.spacing.md,lineHeight:"1.6"}}>
-              Upload a CSV with columns: <span style={{fontFamily:THEME.fonts.mono,fontSize:"11px",color:THEME.colors.textSecondary}}>date, title, type, description, timecap, warmup, strength, accessory, movements</span>
-              <br/>Movements format: <span style={{fontFamily:THEME.fonts.mono,fontSize:"11px",color:THEME.colors.textSecondary}}>Name:Reps:Weight;Name:Reps:Weight</span>
-              <br/>Example: <span style={{fontFamily:THEME.fonts.mono,fontSize:"11px",color:THEME.colors.textSecondary}}>Thrusters:21-15-9:95 lbs;Pull-ups:21-15-9:</span>
-            </div>
-            <label style={{
-              display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
-              padding:"12px",borderRadius:THEME.radius.md,cursor:"pointer",
-              background:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
-              color:THEME.colors.white,fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"2px",
-              opacity:csvImporting?0.5:1,
-            }}>
-              <I.plus size={16} color={THEME.colors.white} />
-              {csvImporting ? "Importing..." : "Choose CSV File"}
-              <input type="file" accept=".csv" onChange={handleCsvImport} disabled={csvImporting} style={{display:"none"}} />
-            </label>
-            {csvResult && (
-              <div style={{
-                marginTop:THEME.spacing.sm,padding:"10px 14px",borderRadius:THEME.radius.md,fontSize:"13px",
-                background:csvResult.ok?THEME.colors.primarySubtle:"rgba(231,76,60,0.12)",
-                color:csvResult.ok?THEME.colors.primary:THEME.colors.error,
-              }}>{csvResult.msg}</div>
-            )}
-          </div>
-
           {/* WARMUP SECTION */}
           <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.warning}`}}>
             <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
@@ -2673,11 +2654,11 @@ const AdminScreen = () => {
               <div style={S.cardLbl}>Warmup</div>
             </div>
             <textarea style={{
-              ...S.inp, minHeight:"100px", resize:"vertical", lineHeight:"1.6",
+              ...S.inp, minHeight:"48px", resize:"none", lineHeight:"1.6", overflow:"hidden",
               fontFamily:THEME.fonts.body, fontSize:"14px",
-            }} value={wodForm.warmup} onChange={e=>setWodForm(f=>({...f,warmup:e.target.value}))}
+            }} value={wodForm.warmup} onChange={e=>{setWodForm(f=>({...f,warmup:e.target.value}));autoResize(e);}}
               placeholder={"e.g.\n2 Rounds:\n400m Run\n10 Inchworms\n10 Air Squats\n10 PVC Pass-throughs\n\nThen: 2x5 Empty Bar Thrusters"}
-              onFocus={e=>(e.target.style.borderColor=THEME.colors.warning)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+              onFocus={e=>{e.target.style.borderColor=THEME.colors.warning;autoResize(e);}} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
           </div>
 
           {/* STRENGTH SECTION */}
@@ -2687,11 +2668,11 @@ const AdminScreen = () => {
               <div style={S.cardLbl}>Strength</div>
             </div>
             <textarea style={{
-              ...S.inp, minHeight:"100px", resize:"vertical", lineHeight:"1.6",
+              ...S.inp, minHeight:"48px", resize:"none", lineHeight:"1.6", overflow:"hidden",
               fontFamily:THEME.fonts.body, fontSize:"14px",
-            }} value={wodForm.strength} onChange={e=>setWodForm(f=>({...f,strength:e.target.value}))}
+            }} value={wodForm.strength} onChange={e=>{setWodForm(f=>({...f,strength:e.target.value}));autoResize(e);}}
               placeholder={"e.g.\nBack Squat\n5 @ 65%\n5 @ 75%\n3 @ 85%\n1 @ 90%\n1 @ 95%\n\nRest 2 min between sets"}
-              onFocus={e=>(e.target.style.borderColor=THEME.colors.accent)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+              onFocus={e=>{e.target.style.borderColor=THEME.colors.accent;autoResize(e);}} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
           </div>
 
           {/* PRESCRIBED WOD SECTION */}
@@ -2701,19 +2682,40 @@ const AdminScreen = () => {
               <div style={S.cardLbl}>Prescribed WOD</div>
             </div>
 
+            {/* Target Time */}
+            <div style={{marginBottom:THEME.spacing.md}}>
+              <label style={{...S.lbl,fontSize:"11px"}}>Target Time</label>
+              <input style={S.inp} value={wodForm.targetTime} onChange={e=>setWodForm(f=>({...f,targetTime:e.target.value}))}
+                placeholder="e.g. 8-12 minutes" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+            </div>
+
             {/* Movement list */}
             {wodForm.movements.length > 0 && (
               <div style={{marginBottom:THEME.spacing.sm}}>
                 {wodForm.movements.map((m, idx) => (
-                  <div key={idx} style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,padding:"8px 0",borderBottom:`1px solid ${THEME.colors.border}`}}>
-                    <span style={{fontFamily:THEME.fonts.display,fontSize:"14px",color:THEME.colors.textMuted,width:"20px"}}>{idx+1}</span>
-                    <div style={{flex:1}}>
-                      <span style={{fontWeight:"600",fontSize:"14px"}}>{m.name}</span>
-                      <span style={{color:THEME.colors.textSecondary,fontSize:"12px",marginLeft:"8px"}}>{m.reps}{m.weight?` @ ${m.weight}`:""}</span>
+                  <div key={idx} style={{padding:"8px 0",borderBottom:`1px solid ${THEME.colors.border}`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+                      <span style={{fontFamily:THEME.fonts.display,fontSize:"14px",color:THEME.colors.textMuted,width:"20px"}}>{idx+1}</span>
+                      <div style={{flex:1}}>
+                        <span style={{fontWeight:"600",fontSize:"14px"}}>{m.name}</span>
+                        <span style={{color:THEME.colors.textSecondary,fontSize:"12px",marginLeft:"8px"}}>{m.reps}</span>
+                      </div>
+                      <button onClick={()=>removeMovement(idx)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px"}}>
+                        <I.trash size={14} color={THEME.colors.error} />
+                      </button>
                     </div>
-                    <button onClick={()=>removeMovement(idx)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px"}}>
-                      <I.trash size={14} color={THEME.colors.error} />
-                    </button>
+                    {/* Weight levels display */}
+                    {m.weights && Object.keys(m.weights).length > 0 && (
+                      <div style={{display:"flex",gap:"6px",marginTop:"4px",marginLeft:"28px",flexWrap:"wrap"}}>
+                        {Object.entries(m.weights).map(([level, wt]) => (
+                          <span key={level} style={{fontSize:"10px",padding:"2px 8px",borderRadius:THEME.radius.full,
+                            background: level==="Rx"?THEME.colors.primarySubtle:level==="Rx+"?THEME.colors.accentSubtle:"rgba(255,255,255,0.05)",
+                            color: level==="Rx"?THEME.colors.primary:level==="Rx+"?THEME.colors.accent:THEME.colors.textMuted,
+                            fontFamily:THEME.fonts.display,letterSpacing:"0.5px",
+                          }}>{level}: {wt}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2737,16 +2739,33 @@ const AdminScreen = () => {
                   </div>
                 )}
               </div>
-              <div style={{display:"flex",gap:"6px"}}>
-                <div style={{flex:1}}><label style={{...S.lbl,fontSize:"10px"}}>Reps</label><input style={{...S.inp,padding:"10px 12px",fontSize:"14px"}} value={newMov.reps} onChange={e=>setNewMov(f=>({...f,reps:e.target.value}))} placeholder="21-15-9" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>
-                <div style={{flex:1}}><label style={{...S.lbl,fontSize:"10px"}}>Weight</label><input style={{...S.inp,padding:"10px 12px",fontSize:"14px"}} value={newMov.weight} onChange={e=>setNewMov(f=>({...f,weight:e.target.value}))} placeholder="95 lbs" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>
-                <button onClick={addMovement} disabled={!newMov.name||!newMov.reps} style={{
-                  alignSelf:"flex-end",padding:"10px 16px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
-                  background:(!newMov.name||!newMov.reps)?THEME.colors.surfaceHover:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
-                  color:(!newMov.name||!newMov.reps)?THEME.colors.textMuted:THEME.colors.white,
-                  fontFamily:THEME.fonts.display,fontSize:"12px",letterSpacing:"1px",marginBottom:"0",
-                }}>Add</button>
+              <div style={{marginBottom:THEME.spacing.sm}}>
+                <label style={{...S.lbl,fontSize:"10px"}}>Reps</label>
+                <input style={{...S.inp,padding:"10px 12px",fontSize:"14px"}} value={newMov.reps} onChange={e=>setNewMov(f=>({...f,reps:e.target.value}))} placeholder="21-15-9" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
               </div>
+
+              {/* Weight levels */}
+              <label style={{...S.lbl,fontSize:"10px"}}>Weight by Level</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:THEME.spacing.sm}}>
+                {WEIGHT_LEVELS.map(level => (
+                  <div key={level} style={{flex:"1 1 45%",minWidth:"120px"}}>
+                    <div style={{fontSize:"9px",fontFamily:THEME.fonts.display,letterSpacing:"1px",marginBottom:"3px",
+                      color: level==="Rx"?THEME.colors.primary:level==="Rx+"?THEME.colors.accent:THEME.colors.textMuted,
+                    }}>{level}</div>
+                    <input style={{...S.inp,padding:"8px 10px",fontSize:"13px"}} value={newMov.weights[level]}
+                      onChange={e=>setNewMov(f=>({...f,weights:{...f.weights,[level]:e.target.value}}))}
+                      placeholder={`${level} weight`}
+                      onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={addMovement} disabled={!newMov.name||!newMov.reps} style={{
+                width:"100%",padding:"10px 16px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                background:(!newMov.name||!newMov.reps)?THEME.colors.surfaceHover:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
+                color:(!newMov.name||!newMov.reps)?THEME.colors.textMuted:THEME.colors.white,
+                fontFamily:THEME.fonts.display,fontSize:"12px",letterSpacing:"1px",
+              }}>Add Movement</button>
             </div>
           </div>
 
@@ -2757,11 +2776,41 @@ const AdminScreen = () => {
               <div style={S.cardLbl}>Accessory Work</div>
             </div>
             <textarea style={{
-              ...S.inp, minHeight:"100px", resize:"vertical", lineHeight:"1.6",
+              ...S.inp, minHeight:"48px", resize:"none", lineHeight:"1.6", overflow:"hidden",
               fontFamily:THEME.fonts.body, fontSize:"14px",
-            }} value={wodForm.accessory} onChange={e=>setWodForm(f=>({...f,accessory:e.target.value}))}
+            }} value={wodForm.accessory} onChange={e=>{setWodForm(f=>({...f,accessory:e.target.value}));autoResize(e);}}
               placeholder={"e.g.\n3x12 Dumbbell Rows (each arm)\n3x15 GHD Hip Extensions\n3x20 Banded Pull-aparts\n\nFoam roll and stretch 5 min"}
-              onFocus={e=>(e.target.style.borderColor=THEME.colors.textSecondary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+              onFocus={e=>{e.target.style.borderColor=THEME.colors.textSecondary;autoResize(e);}} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+          </div>
+
+          {/* CSV IMPORT — now after Accessory, before Publish */}
+          <div style={{...S.card,background:THEME.colors.surfaceLight,border:`1px dashed ${THEME.colors.border}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+              <span style={{fontSize:"16px"}}>📄</span>
+              <div style={S.cardLbl}>Import WODs from CSV</div>
+            </div>
+            <div style={{color:THEME.colors.textMuted,fontSize:"12px",marginBottom:THEME.spacing.md,lineHeight:"1.6"}}>
+              Upload a CSV with columns: <span style={{fontFamily:THEME.fonts.mono,fontSize:"11px",color:THEME.colors.textSecondary}}>date, title, type, description, timecap, warmup, strength, accessory, movements</span>
+              <br/>Movements format: <span style={{fontFamily:THEME.fonts.mono,fontSize:"11px",color:THEME.colors.textSecondary}}>Name:Reps:Weight;Name:Reps:Weight</span>
+            </div>
+            <label style={{
+              display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
+              padding:"12px",borderRadius:THEME.radius.md,cursor:"pointer",
+              background:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
+              color:THEME.colors.white,fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"2px",
+              opacity:csvImporting?0.5:1,
+            }}>
+              <I.plus size={16} color={THEME.colors.white} />
+              {csvImporting ? "Importing..." : "Choose CSV File"}
+              <input type="file" accept=".csv" onChange={handleCsvImport} disabled={csvImporting} style={{display:"none"}} />
+            </label>
+            {csvResult && (
+              <div style={{
+                marginTop:THEME.spacing.sm,padding:"10px 14px",borderRadius:THEME.radius.md,fontSize:"13px",
+                background:csvResult.ok?THEME.colors.primarySubtle:"rgba(231,76,60,0.12)",
+                color:csvResult.ok?THEME.colors.primary:THEME.colors.error,
+              }}>{csvResult.msg}</div>
+            )}
           </div>
 
           {/* PUBLISH BUTTON */}
@@ -3009,8 +3058,8 @@ const AdminScreen = () => {
                     <span style={{fontSize:"14px"}}>🔥</span>
                     <label style={{...S.lbl,fontSize:"11px",marginBottom:0}}>Warmup</label>
                   </div>
-                  <textarea style={{...S.inp,minHeight:"70px",resize:"vertical",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
-                    value={schedNewWod.warmup} onChange={e=>setSchedNewWod(f=>({...f,warmup:e.target.value}))}
+                  <textarea style={{...S.inp,minHeight:"48px",resize:"none",overflow:"hidden",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
+                    value={schedNewWod.warmup} onChange={e=>{setSchedNewWod(f=>({...f,warmup:e.target.value}));autoResize(e);}}
                     placeholder="2 Rounds: 400m Run, 10 Air Squats..."
                     onFocus={e=>(e.target.style.borderColor=THEME.colors.warning)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
                 </div>
@@ -3021,8 +3070,8 @@ const AdminScreen = () => {
                     <span style={{fontSize:"14px"}}>🏋️</span>
                     <label style={{...S.lbl,fontSize:"11px",marginBottom:0}}>Strength</label>
                   </div>
-                  <textarea style={{...S.inp,minHeight:"70px",resize:"vertical",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
-                    value={schedNewWod.strength} onChange={e=>setSchedNewWod(f=>({...f,strength:e.target.value}))}
+                  <textarea style={{...S.inp,minHeight:"48px",resize:"none",overflow:"hidden",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
+                    value={schedNewWod.strength} onChange={e=>{setSchedNewWod(f=>({...f,strength:e.target.value}));autoResize(e);}}
                     placeholder="Back Squat 5x5 @ 80%..."
                     onFocus={e=>(e.target.style.borderColor=THEME.colors.accent)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
                 </div>
@@ -3090,8 +3139,8 @@ const AdminScreen = () => {
                     <span style={{fontSize:"14px"}}>💪</span>
                     <label style={{...S.lbl,fontSize:"11px",marginBottom:0}}>Accessory</label>
                   </div>
-                  <textarea style={{...S.inp,minHeight:"70px",resize:"vertical",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
-                    value={schedNewWod.accessory} onChange={e=>setSchedNewWod(f=>({...f,accessory:e.target.value}))}
+                  <textarea style={{...S.inp,minHeight:"48px",resize:"none",overflow:"hidden",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"13px"}}
+                    value={schedNewWod.accessory} onChange={e=>{setSchedNewWod(f=>({...f,accessory:e.target.value}));autoResize(e);}}
                     placeholder="3x12 DB Rows, 3x15 GHD Extensions..."
                     onFocus={e=>(e.target.style.borderColor=THEME.colors.textSecondary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
                 </div>
@@ -3258,7 +3307,8 @@ export default function App() {
         button:active{transform:scale(0.97);}
         input,textarea{transition:border-color 0.2s ease,box-shadow 0.2s ease;}
         input:focus,textarea:focus{border-color:${THEME.colors.primary} !important;box-shadow:0 0 0 3px ${THEME.colors.primarySubtle};}
-        textarea{font-family:${THEME.fonts.body};}
+        textarea{font-family:${THEME.fonts.body},'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;}
+        input,textarea{color-scheme:dark;}
         @media (min-width: 768px) {
           #root > div > div:last-child { padding-left: 32px; padding-right: 32px; }
         }
