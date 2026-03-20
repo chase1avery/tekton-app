@@ -707,7 +707,7 @@ const ScheduleScreen = () => {
 
   const coach = (id) => { const m = membersCache.find(x => x.id === id); return m ? m.firstName : "Coach"; };
   const coachObj = (id) => membersCache.find(x => x.id === id);
-  const [coachPopup, setCoachPopup] = useState(null);
+  const [coachPopup, setCoachPopup] = useState(null); // { coach, x, y }
   const isToday = selectedDate === today();
   const isPast = (date, time) => {
     const now = new Date();
@@ -932,7 +932,7 @@ const ScheduleScreen = () => {
                 </div>
                 <div style={{color:THEME.colors.textSecondary,fontSize:"13px",display:"flex",alignItems:"center",gap:"12px"}}>
                   <span style={{display:"flex",alignItems:"center",gap:"4px"}}><I.clock size={13} color={THEME.colors.textMuted}/> {fmtTime(s.startTime)} – {fmtTime(s.endTime)}</span>
-                  <span onClick={(e)=>{e.stopPropagation();const c=coachObj(s.coachId);if(c?.avatar)setCoachPopup(c);}} style={{cursor:coachObj(s.coachId)?.avatar?"pointer":"default"}}>Coach {coach(s.coachId)}</span>
+                  <span onClick={(e)=>{e.stopPropagation();const c=coachObj(s.coachId);if(c?.avatar){const rect=e.target.getBoundingClientRect();setCoachPopup({coach:c,x:rect.left,y:rect.bottom+8});}}} style={{cursor:coachObj(s.coachId)?.avatar?"pointer":"default",textDecoration:coachObj(s.coachId)?.avatar?"underline":"none",textUnderlineOffset:"3px",textDecorationColor:THEME.colors.border}}>Coach {coach(s.coachId)}</span>
                 </div>
               </div>
               <div style={{textAlign:"right",minWidth:"55px"}}>
@@ -1002,26 +1002,33 @@ const ScheduleScreen = () => {
         );
       })}
 
-      {/* Coach Avatar Popup */}
-      {coachPopup && coachPopup.avatar && (
-        <div onClick={()=>setCoachPopup(null)} style={{
-          position:"fixed",inset:0,zIndex:9999,
-          background:"rgba(0,0,0,0.7)",backdropFilter:"blur(8px)",
-          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-          cursor:"pointer",
-        }}>
-          <img src={coachPopup.avatar} alt="" style={{
-            width:"160px",height:"160px",borderRadius:THEME.radius.full,objectFit:"cover",
-            border:`3px solid ${THEME.colors.primary}`,marginBottom:THEME.spacing.md,
-          }} />
-          <div style={{fontFamily:THEME.fonts.display,fontSize:"24px",color:THEME.colors.white,letterSpacing:"1px"}}>
-            {coachPopup.firstName} {coachPopup.lastName}
+      {/* Coach Avatar Tooltip */}
+      {coachPopup && coachPopup.coach.avatar && (
+        <>
+          <div onClick={()=>setCoachPopup(null)} style={{position:"fixed",inset:0,zIndex:9998}} />
+          <div style={{
+            position:"fixed",left:Math.min(coachPopup.x, window.innerWidth - 180),top:coachPopup.y,
+            zIndex:9999,
+            background:THEME.colors.surface,border:`1px solid ${THEME.colors.border}`,
+            borderRadius:THEME.radius.lg,padding:"12px",
+            display:"flex",alignItems:"center",gap:"10px",
+            boxShadow:"0 8px 24px rgba(0,0,0,0.4)",
+            maxWidth:"220px",
+          }}>
+            <img src={coachPopup.coach.avatar} alt="" style={{
+              width:"48px",height:"48px",borderRadius:THEME.radius.full,objectFit:"cover",
+              border:`2px solid ${THEME.colors.primary}`,flexShrink:0,
+            }} />
+            <div>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"15px",color:THEME.colors.text,letterSpacing:"0.5px"}}>
+                {coachPopup.coach.firstName} {coachPopup.coach.lastName}
+              </div>
+              <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"9px",marginTop:"3px"}}>
+                {coachPopup.coach.role}
+              </div>
+            </div>
           </div>
-          <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,marginTop:THEME.spacing.sm,fontSize:"12px",padding:"4px 14px"}}>
-            {coachPopup.role}
-          </div>
-          <div style={{color:THEME.colors.textMuted,fontSize:"12px",marginTop:THEME.spacing.lg}}>Tap anywhere to close</div>
-        </div>
+        </>
       )}
     </div>
   );
