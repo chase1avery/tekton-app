@@ -6,9 +6,9 @@
 import { useState, useEffect, createContext, useContext, useCallback } from "react";
 
 // ============================================================
-// GYM CONFIG
+// GYM CONFIG (defaults — can be overridden by settings stored in Supabase)
 // ============================================================
-const GYM_CONFIG = {
+const DEFAULT_GYM_CONFIG = {
   id: "tekton-fitness", name: "Tekton Fitness", shortName: "TEKTON",
   tagline: "CrossFit. Nutrition. Community.", subtitle: "Built Here.",
   location: "Murray, Utah", address: "5914 S 350 W, Murray, UT 84107",
@@ -32,16 +32,34 @@ const GYM_CONFIG = {
   },
 };
 
-// ============================================================
-// THEME
-// ============================================================
-const THEME = {
+// Mutable references that get updated by Settings
+let GYM_CONFIG = { ...DEFAULT_GYM_CONFIG };
+
+// Helper to derive darker/lighter/subtle from a hex color
+const hexToRgb = (hex) => {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return { r, g, b };
+};
+const darkenHex = (hex, amt = 30) => {
+  const { r, g, b } = hexToRgb(hex);
+  return `#${Math.max(0, r - amt).toString(16).padStart(2, "0")}${Math.max(0, g - amt).toString(16).padStart(2, "0")}${Math.max(0, b - amt).toString(16).padStart(2, "0")}`;
+};
+const lightenHex = (hex, amt = 30) => {
+  const { r, g, b } = hexToRgb(hex);
+  return `#${Math.min(255, r + amt).toString(16).padStart(2, "0")}${Math.min(255, g + amt).toString(16).padStart(2, "0")}${Math.min(255, b + amt).toString(16).padStart(2, "0")}`;
+};
+const subtleHex = (hex, a = 0.12) => {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+};
+
+const buildTheme = (config) => ({
   colors: {
     bg: "#0B0F0D", surface: "#141A16", surfaceLight: "#1C241E", surfaceHover: "#243028",
     border: "#2A332C", borderLight: "#384039",
-    primary: GYM_CONFIG.colors.primary, primaryDark: GYM_CONFIG.colors.primaryDark,
-    primaryLight: GYM_CONFIG.colors.primaryLight, primarySubtle: GYM_CONFIG.colors.primarySubtle,
-    accent: GYM_CONFIG.colors.accent, accentSubtle: GYM_CONFIG.colors.accentSubtle,
+    primary: config.colors.primary, primaryDark: darkenHex(config.colors.primary),
+    primaryLight: lightenHex(config.colors.primary), primarySubtle: subtleHex(config.colors.primary),
+    accent: config.colors.accent, accentSubtle: config.colors.accentSubtle,
     success: "#2ECC71", warning: "#F39C12", error: "#E74C3C",
     text: "#F0F4F1", textSecondary: "#94A89A", textMuted: "#5A6B5E",
     white: "#FFFFFF", black: "#000000",
@@ -49,7 +67,25 @@ const THEME = {
   fonts: { display: "'Bebas Neue', sans-serif", body: "'DM Sans', sans-serif", mono: "'JetBrains Mono', monospace" },
   radius: { sm: "6px", md: "10px", lg: "14px", xl: "20px", full: "9999px" },
   spacing: { xs: "4px", sm: "8px", md: "16px", lg: "24px", xl: "32px", xxl: "48px" },
+});
+
+let THEME = buildTheme(GYM_CONFIG);
+
+// Apply settings overrides (called on load and when settings change)
+const applyGymSettings = (overrides) => {
+  if (overrides.name) { GYM_CONFIG.name = overrides.name; GYM_CONFIG.shortName = overrides.shortName || overrides.name.toUpperCase(); }
+  if (overrides.primaryColor) {
+    GYM_CONFIG.colors.primary = overrides.primaryColor;
+    GYM_CONFIG.colors.primaryDark = darkenHex(overrides.primaryColor);
+    GYM_CONFIG.colors.primaryLight = lightenHex(overrides.primaryColor);
+    GYM_CONFIG.colors.primarySubtle = subtleHex(overrides.primaryColor);
+  }
+  if (overrides.logoUrl !== undefined) GYM_CONFIG.logoUrl = overrides.logoUrl;
+  THEME = buildTheme(GYM_CONFIG);
 };
+
+// Settings context
+const SettingsContext = createContext({ refresh: () => {} });
 
 // ============================================================
 // HELPER: generate dates for the current week (Mon-Sun)
@@ -2113,12 +2149,39 @@ const MOVEMENT_LIBRARY = [
 
 const AdminScreen = () => {
   const { user } = useAuth();
-  const [tab, setTab] = useState("overview"); // overview | roster | wod | schedule
+  const settingsCtx = useContext(SettingsContext);
+  const [tab, setTab] = useState("overview"); // overview | users | roster | wod | schedule | settings
   const [members, setMembers] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [workouts, setWorkouts] = useState([]);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Expanded WODs in published list
+  const [expandedWods, setExpandedWods] = useState({});
+  const toggleWodExpand = (id) => setExpandedWods(p => ({ ...p, [id]: !p[id] }));
+
+  // Removal modal
+  const [removeModal, setRemoveModal] = useState(null); // { member, reason }
+  const [removeReason, setRemoveReason] = useState("");
+  const [removing, setRemoving] = useState(false);
+  const handleRemoveMember = async () => {
+    if (!removeModal || !removeReason.trim()) return;
+    setRemoving(true);
+    await services.members.delete(removeModal.id);
+    await load();
+    setRemoving(false);
+    setRemoveModal(null);
+    setRemoveReason("");
+  };
+
+  // Settings
+  const [settingsForm, setSettingsForm] = useState({
+    name: GYM_CONFIG.name, shortName: GYM_CONFIG.shortName,
+    primaryColor: GYM_CONFIG.colors.primary, logoUrl: GYM_CONFIG.logoUrl || "",
+  });
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   // WOD Builder
   const [wodForm, setWodForm] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", notes:"", date:today(), targetTime:"", movements:[] });
@@ -2359,12 +2422,13 @@ const AdminScreen = () => {
       {!adminViewWod && (<>
       <div style={{fontFamily:THEME.fonts.display,fontSize:"28px",letterSpacing:"1px",marginBottom:THEME.spacing.lg}}>Admin</div>
 
-      <div style={{display:"flex",gap:"5px",marginBottom:THEME.spacing.lg}}>
+      <div style={{display:"flex",gap:"5px",marginBottom:THEME.spacing.lg,flexWrap:"wrap"}}>
         <TabBtn id="overview" label="Overview" />
         <TabBtn id="users" label="Users" />
         <TabBtn id="roster" label="Roster" />
         <TabBtn id="wod" label="Program" />
         <TabBtn id="schedule" label="Schedule" />
+        {user.role === "admin" && <TabBtn id="settings" label="Settings" />}
       </div>
 
       {/* ===== OVERVIEW ===== */}
@@ -2497,7 +2561,7 @@ const AdminScreen = () => {
                           background:THEME.colors.surfaceLight,color:THEME.colors.textMuted,
                           fontSize:"9px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
                         }}>Demote</button>
-                        <button onClick={async ()=>{if(window.confirm(`Remove ${m.firstName} ${m.lastName} from ${GYM_CONFIG.name}? This action cannot be undone.`)){await services.members.delete(m.id);await load();}}} style={{
+                        <button onClick={()=>setRemoveModal(m)} style={{
                           padding:"4px 8px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
                           background:"rgba(231,76,60,0.12)",color:THEME.colors.error,
                           fontSize:"9px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
@@ -2549,7 +2613,7 @@ const AdminScreen = () => {
                       background:THEME.colors.primarySubtle,color:THEME.colors.primary,
                       fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
                     }}>Make Admin</button>
-                    <button onClick={async ()=>{if(window.confirm(`Remove ${m.firstName} ${m.lastName} from ${GYM_CONFIG.name}? This action cannot be undone.`)){await services.members.delete(m.id);await load();}}} style={{
+                    <button onClick={()=>setRemoveModal(m)} style={{
                       padding:"6px 10px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
                       background:"rgba(231,76,60,0.12)",color:THEME.colors.error,
                       fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
@@ -2915,70 +2979,82 @@ const AdminScreen = () => {
               </div>
             );
 
-            return filtered.map(w => (
-              <div key={w.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:w.warmup||w.strength||w.accessory||w.notes?"8px":"0"}}>
-                  <div>
-                    <div style={{fontFamily:THEME.fonts.display,fontSize:"18px"}}>{w.title}</div>
-                    <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"2px"}}>
-                      <span style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"9px"}}>{w.type}</span>
-                      {w.timeCap && <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.timeCap} min</span>}
-                      <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.movements.length} movements</span>
-                    </div>
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.primary}}>
-                      {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(w.date).getDay()]}
-                    </div>
-                    <div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{new Date(w.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
-                  </div>
-                </div>
-
-                {/* Warmup preview */}
-                {w.warmup && (
-                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.warning,marginBottom:"4px"}}>🔥 Warmup</div>
-                    <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.warmup}</div>
-                  </div>
-                )}
-
-                {/* Strength preview */}
-                {w.strength && (
-                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.accent,marginBottom:"4px"}}>🏋️ Strength</div>
-                    <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.strength}</div>
-                  </div>
-                )}
-
-                {/* WOD movements */}
-                {w.movements.length > 0 && (
-                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.primary,marginBottom:"4px"}}>⏱️ WOD</div>
-                    {w.movements.map((m,i)=>(
-                      <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:"12px",color:THEME.colors.textSecondary}}>
-                        <span>{m.name}</span><span style={{fontFamily:THEME.fonts.mono,fontSize:"11px"}}>{m.reps}{m.weight?` @ ${m.weight}`:""}</span>
+            return filtered.map(w => {
+              const expanded = expandedWods[w.id];
+              return (
+                <div key={w.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px"}}>
+                  {/* Header — always visible */}
+                  <div onClick={()=>toggleWodExpand(w.id)} style={{cursor:"pointer"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div>
+                        <div style={{fontFamily:THEME.fonts.display,fontSize:"18px"}}>{w.title}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"2px"}}>
+                          <span style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"9px"}}>{w.type}</span>
+                          {w.timeCap && <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.timeCap} min</span>}
+                          <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{w.movements.length} mov</span>
+                        </div>
                       </div>
-                    ))}
+                      <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.primary}}>
+                            {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(w.date).getDay()]}
+                          </div>
+                          <div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{new Date(w.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+                        </div>
+                        <div style={{transform:expanded?"rotate(90deg)":"rotate(0deg)",transition:"transform 0.2s"}}>
+                          <I.chevR size={16} color={THEME.colors.textMuted} />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
 
-                {/* Accessory preview */}
-                {w.accessory && (
-                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textSecondary,marginBottom:"4px"}}>💪 Accessory</div>
-                    <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.accessory}</div>
-                  </div>
-                )}
+                  {/* Movements — always visible */}
+                  {w.movements.length > 0 && (
+                    <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`,marginTop:"8px"}}>
+                      <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.primary,marginBottom:"4px"}}>⏱️ WOD</div>
+                      {w.movements.map((m,i)=>(
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:"12px",color:THEME.colors.textSecondary}}>
+                          <span>{m.name}</span><span style={{fontFamily:THEME.fonts.mono,fontSize:"11px"}}>{m.reps}{m.weight?` @ ${m.weight}`:""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                {/* Notes preview */}
-                {w.notes && (
-                  <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
-                    <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textMuted,marginBottom:"4px"}}>📝 Notes</div>
-                    <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.notes}</div>
-                  </div>
-                )}
-              </div>
-            ));
+                  {/* Expanded details — warmup, strength, accessory, notes */}
+                  {expanded && (
+                    <div style={{marginTop:"4px"}}>
+                      {w.warmup && (
+                        <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                          <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.warning,marginBottom:"4px"}}>🔥 Warmup</div>
+                          <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.warmup}</div>
+                        </div>
+                      )}
+                      {w.strength && (
+                        <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                          <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.accent,marginBottom:"4px"}}>🏋️ Strength</div>
+                          <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.strength}</div>
+                        </div>
+                      )}
+                      {w.accessory && (
+                        <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                          <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textSecondary,marginBottom:"4px"}}>💪 Accessory</div>
+                          <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.accessory}</div>
+                        </div>
+                      )}
+                      {w.notes && (
+                        <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
+                          <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.textMuted,marginBottom:"4px"}}>📝 Notes</div>
+                          <div style={{fontSize:"12px",color:THEME.colors.textSecondary,whiteSpace:"pre-line",lineHeight:"1.5"}}>{w.notes}</div>
+                        </div>
+                      )}
+                      {!w.warmup && !w.strength && !w.accessory && !w.notes && (
+                        <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`,color:THEME.colors.textMuted,fontSize:"12px",fontStyle:"italic"}}>No additional details</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            });
           })()}
         </>
       )}
@@ -3295,7 +3371,169 @@ const AdminScreen = () => {
           })}
         </>
       )}
+
+      {/* ===== SETTINGS (Admin only) ===== */}
+      {tab === "settings" && user.role === "admin" && (
+        <>
+          <div style={S.card}>
+            <div style={S.cardLbl}>Gym Branding</div>
+
+            {/* Gym Name */}
+            <div style={S.inpGrp}>
+              <label style={{...S.lbl,fontSize:"11px"}}>Gym Name</label>
+              <input style={S.inp} value={settingsForm.name} onChange={e=>setSettingsForm(f=>({...f,name:e.target.value}))}
+                placeholder="e.g. Tekton Fitness" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+            </div>
+
+            <div style={S.inpGrp}>
+              <label style={{...S.lbl,fontSize:"11px"}}>Short Name (tab bar, header)</label>
+              <input style={S.inp} value={settingsForm.shortName} onChange={e=>setSettingsForm(f=>({...f,shortName:e.target.value}))}
+                placeholder="e.g. TEKTON" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+            </div>
+
+            {/* Primary Color */}
+            <div style={S.inpGrp}>
+              <label style={{...S.lbl,fontSize:"11px"}}>Primary Color</label>
+              <div style={{display:"flex",gap:THEME.spacing.sm,alignItems:"center"}}>
+                <input type="color" value={settingsForm.primaryColor} onChange={e=>setSettingsForm(f=>({...f,primaryColor:e.target.value}))}
+                  style={{width:"48px",height:"48px",border:`2px solid ${THEME.colors.border}`,borderRadius:THEME.radius.md,cursor:"pointer",background:"none",padding:"2px"}} />
+                <input style={{...S.inp,flex:1}} value={settingsForm.primaryColor} onChange={e=>setSettingsForm(f=>({...f,primaryColor:e.target.value}))}
+                  placeholder="#2D8C4E" onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                <div style={{width:"48px",height:"48px",borderRadius:THEME.radius.md,background:settingsForm.primaryColor,flexShrink:0}} />
+              </div>
+              {/* Quick color presets */}
+              <div style={{display:"flex",gap:"6px",marginTop:THEME.spacing.sm,flexWrap:"wrap"}}>
+                {["#2D8C4E","#E74C3C","#3498DB","#9B59B6","#E67E22","#1ABC9C","#F39C12","#2C3E50","#E91E63","#00BCD4"].map(c=>(
+                  <button key={c} onClick={()=>setSettingsForm(f=>({...f,primaryColor:c}))} style={{
+                    width:"32px",height:"32px",borderRadius:THEME.radius.sm,border:settingsForm.primaryColor===c?`3px solid ${THEME.colors.white}`:`2px solid ${THEME.colors.border}`,
+                    background:c,cursor:"pointer",transition:"all 0.15s",
+                  }} />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Logo Upload */}
+          <div style={S.card}>
+            <div style={S.cardLbl}>Gym Logo</div>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.lg}}>
+              {settingsForm.logoUrl ? (
+                <img src={settingsForm.logoUrl} alt="" style={{width:"72px",height:"72px",borderRadius:THEME.radius.lg,objectFit:"contain",background:THEME.colors.surfaceLight,padding:"4px"}} />
+              ) : (
+                <div style={{
+                  width:"72px",height:"72px",borderRadius:THEME.radius.lg,
+                  background:`linear-gradient(135deg,${settingsForm.primaryColor},${darkenHex(settingsForm.primaryColor)})`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontFamily:THEME.fonts.display,fontSize:"28px",color:THEME.colors.white,
+                }}>{settingsForm.shortName?.charAt(0) || "G"}</div>
+              )}
+              <div style={{flex:1}}>
+                <label style={{
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
+                  padding:"10px",borderRadius:THEME.radius.md,cursor:"pointer",
+                  border:`1px dashed ${THEME.colors.border}`,color:THEME.colors.textSecondary,
+                  fontSize:"13px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                }}>
+                  <I.plus size={14} color={THEME.colors.textSecondary} /> Upload Logo
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const ext = file.name.split(".").pop();
+                    const path = `logos/${GYM_CONFIG.id}.${ext}`;
+                    await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+                    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+                    setSettingsForm(f => ({ ...f, logoUrl: urlData.publicUrl + "?t=" + Date.now() }));
+                  }} />
+                </label>
+                {settingsForm.logoUrl && (
+                  <button onClick={()=>setSettingsForm(f=>({...f,logoUrl:""}))} style={{
+                    marginTop:"6px",background:"none",border:"none",cursor:"pointer",
+                    color:THEME.colors.error,fontSize:"11px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                  }}>Remove Logo</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Live Preview */}
+          <div style={S.card}>
+            <div style={S.cardLbl}>Preview</div>
+            <div style={{display:"flex",alignItems:"center",gap:"10px",padding:THEME.spacing.md,background:THEME.colors.bg,borderRadius:THEME.radius.md}}>
+              {settingsForm.logoUrl ? (
+                <img src={settingsForm.logoUrl} alt="" style={{width:"32px",height:"32px",borderRadius:"8px",objectFit:"contain"}} />
+              ) : (
+                <div style={{width:"32px",height:"32px",borderRadius:"8px",background:`linear-gradient(135deg,${settingsForm.primaryColor},${darkenHex(settingsForm.primaryColor)})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px",fontFamily:THEME.fonts.display,color:"#fff",fontWeight:"700"}}>{settingsForm.shortName?.charAt(0) || "G"}</div>
+              )}
+              <span style={{fontFamily:THEME.fonts.display,fontSize:"16px",color:settingsForm.primaryColor,letterSpacing:"3px"}}>{settingsForm.shortName || "GYM"}</span>
+            </div>
+            <div style={{marginTop:THEME.spacing.sm,display:"flex",gap:"6px"}}>
+              <div style={{padding:"8px 16px",borderRadius:THEME.radius.md,background:`linear-gradient(135deg,${settingsForm.primaryColor},${darkenHex(settingsForm.primaryColor)})`,color:"#fff",fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1px"}}>Primary Button</div>
+              <div style={{padding:"8px 16px",borderRadius:THEME.radius.md,background:subtleHex(settingsForm.primaryColor),color:settingsForm.primaryColor,fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1px"}}>Subtle Button</div>
+            </div>
+          </div>
+
+          {/* Save */}
+          <button onClick={async () => {
+            setSettingsSaving(true);
+            // Save to Supabase gym_settings table
+            await supabase.from("gym_settings").upsert({
+              gym_id: GYM_CONFIG.id,
+              name: settingsForm.name, short_name: settingsForm.shortName,
+              primary_color: settingsForm.primaryColor,
+              logo_url: settingsForm.logoUrl || null,
+            }, { onConflict: "gym_id" });
+            // Apply immediately
+            applyGymSettings({ name: settingsForm.name, shortName: settingsForm.shortName, primaryColor: settingsForm.primaryColor, logoUrl: settingsForm.logoUrl || null });
+            settingsCtx.refresh();
+            setSettingsSaving(false); setSettingsSaved(true);
+            setTimeout(() => setSettingsSaved(false), 1500);
+          }} disabled={settingsSaving} style={{
+            ...S.btn1,marginBottom:THEME.spacing.lg,
+            background:`linear-gradient(135deg,${settingsForm.primaryColor},${darkenHex(settingsForm.primaryColor)})`,
+            opacity:settingsSaving?0.5:1,
+          }}>
+            {settingsSaved ? "Settings Saved!" : settingsSaving ? "Saving..." : "Save Settings"}
+          </button>
+        </>
+      )}
+
       </>)}
+
+      {/* ===== REMOVAL MODAL ===== */}
+      {removeModal && (
+        <>
+          <div onClick={()=>{setRemoveModal(null);setRemoveReason("");}} style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(4px)"}} />
+          <div style={{
+            position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",
+            zIndex:9999,width:"90%",maxWidth:"380px",
+            background:THEME.colors.surface,border:`1px solid ${THEME.colors.border}`,
+            borderRadius:THEME.radius.lg,padding:THEME.spacing.lg,
+          }}>
+            <div style={{fontFamily:THEME.fonts.display,fontSize:"20px",letterSpacing:"1px",marginBottom:THEME.spacing.sm,color:THEME.colors.error}}>Remove Member</div>
+            <div style={{fontSize:"14px",color:THEME.colors.textSecondary,marginBottom:THEME.spacing.md,lineHeight:"1.5"}}>
+              Are you sure you want to remove <strong style={{color:THEME.colors.text}}>{removeModal.firstName} {removeModal.lastName}</strong> from {GYM_CONFIG.name}? This action cannot be undone.
+            </div>
+
+            <label style={{...S.lbl,fontSize:"11px"}}>Reason for removing member <span style={{color:THEME.colors.error}}>*</span></label>
+            <textarea style={{...S.inp,minHeight:"80px",resize:"none",overflow:"hidden",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"14px",marginBottom:THEME.spacing.md}}
+              value={removeReason} onChange={e=>{setRemoveReason(e.target.value);autoResize(e);}}
+              placeholder="e.g. Violated gym policies, requested account deletion..."
+              onFocus={e=>(e.target.style.borderColor=THEME.colors.error)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+
+            <div style={{display:"flex",gap:THEME.spacing.sm}}>
+              <button onClick={()=>{setRemoveModal(null);setRemoveReason("");}} style={{...S.btn2,flex:1,marginTop:0}}>Cancel</button>
+              <button onClick={handleRemoveMember} disabled={!removeReason.trim()||removing} style={{
+                flex:1,padding:"14px",border:"none",borderRadius:THEME.radius.md,cursor:"pointer",
+                background:(!removeReason.trim()||removing)?"rgba(231,76,60,0.3)":"#E74C3C",
+                color:THEME.colors.white,fontFamily:THEME.fonts.display,fontSize:"14px",letterSpacing:"2px",
+                opacity:removing?0.5:1,
+              }}>
+                {removing ? "Removing..." : "Remove Member"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -3324,15 +3562,25 @@ const TabBar = ({active,setActive,isStaff}) => {
 // ============================================================
 const MainApp = () => {
   const {user,logout} = useAuth();
+  const settingsCtx = useContext(SettingsContext);
   const [tab, setTab] = useState("home");
+  const [, forceUpdate] = useState(0);
   const isStaff = user.role==="admin"||user.role==="coach";
   const screens = {home:DashboardScreen,schedule:ScheduleScreen,records:RecordsScreen,community:CommunityScreen,profile:ProfileScreen,admin:AdminScreen};
   const Sc = screens[tab]||DashboardScreen;
+
+  // Re-render when settings change
+  useEffect(() => { forceUpdate(v => v + 1); }, [settingsCtx.version]);
+
   return (
     <>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:`14px ${THEME.spacing.md} 0`,position:"sticky",top:0,zIndex:50,background:THEME.colors.bg}}>
         <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-          <div style={{width:"32px",height:"32px",borderRadius:"8px",background:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px",fontFamily:THEME.fonts.display,color:THEME.colors.white,fontWeight:"700"}}>{GYM_CONFIG.shortName.charAt(0)}</div>
+          {GYM_CONFIG.logoUrl ? (
+            <img src={GYM_CONFIG.logoUrl} alt="" style={{width:"32px",height:"32px",borderRadius:"8px",objectFit:"contain"}} />
+          ) : (
+            <div style={{width:"32px",height:"32px",borderRadius:"8px",background:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px",fontFamily:THEME.fonts.display,color:THEME.colors.white,fontWeight:"700"}}>{GYM_CONFIG.shortName.charAt(0)}</div>
+          )}
           <span style={{fontFamily:THEME.fonts.display,fontSize:"16px",color:THEME.colors.primary,letterSpacing:"3px"}}>{GYM_CONFIG.shortName}</span>
         </div>
         <button onClick={logout} style={{background:"none",border:"none",cursor:"pointer",padding:"8px"}}><I.out size={18} color={THEME.colors.textMuted}/></button>
@@ -3350,6 +3598,7 @@ export default function App() {
   const [user,setUser] = useState(null);
   const [view,setView] = useState("login");
   const [loading, setLoading] = useState(true);
+  const [settingsVersion, setSettingsVersion] = useState(0);
   const login = useCallback((u)=>setUser(u),[]);
   const logout = useCallback(async ()=>{
     await services.auth.logout();
@@ -3357,14 +3606,31 @@ export default function App() {
     setView("login");
   },[]);
 
+  // Load gym settings from Supabase
+  const loadGymSettings = useCallback(async () => {
+    try {
+      const { data } = await supabase.from("gym_settings").select("*").eq("gym_id", GYM_CONFIG.id).single();
+      if (data) {
+        applyGymSettings({
+          name: data.name, shortName: data.short_name,
+          primaryColor: data.primary_color, logoUrl: data.logo_url,
+        });
+      }
+    } catch (e) { /* No settings saved yet — use defaults */ }
+  }, []);
+
+  const refreshSettings = useCallback(() => {
+    loadGymSettings().then(() => setSettingsVersion(v => v + 1));
+  }, [loadGymSettings]);
+
   // Check for existing session on app load
   useEffect(() => {
     (async () => {
+      await loadGymSettings();
       try {
         const member = await services.auth.getSession();
         if (member) {
           setUser(member);
-          // Populate members cache
           membersCache = await services.members.getAll();
         }
       } catch (e) {
@@ -3372,7 +3638,7 @@ export default function App() {
       }
       setLoading(false);
     })();
-  }, []);
+  }, [loadGymSettings]);
 
   if (loading) {
     return (
@@ -3394,7 +3660,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <SettingsContext.Provider value={{refresh:refreshSettings, version:settingsVersion}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
         *{margin:0;padding:0;box-sizing:border-box;}
@@ -3423,6 +3689,6 @@ export default function App() {
           {!user?(view==="login"?<LoginScreen onSwitch={()=>setView("signup")} onLogin={login}/>:<SignupScreen onSwitch={()=>setView("login")} onLogin={login}/>):<MainApp/>}
         </AuthContext.Provider>
       </div>
-    </>
+    </SettingsContext.Provider>
   );
 }
