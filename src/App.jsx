@@ -472,7 +472,7 @@ const I = {
 // STYLES
 // ============================================================
 const S = {
-  app: { fontFamily: THEME.fonts.body, background: THEME.colors.bg, color: THEME.colors.text, minHeight: "100vh", maxWidth: "430px", margin: "0 auto", position: "relative", overflow: "hidden" },
+  app: { fontFamily: THEME.fonts.body, background: THEME.colors.bg, color: THEME.colors.text, minHeight: "100vh", maxWidth: "1200px", margin: "0 auto", position: "relative", overflow: "hidden" },
   screen: { padding: `${THEME.spacing.lg} ${THEME.spacing.md}`, paddingBottom: "110px", minHeight: "100vh" },
   authWrap: { display: "flex", flexDirection: "column", justifyContent: "center", minHeight: "100vh", padding: THEME.spacing.lg },
   logoBox: { width: "64px", height: "64px", borderRadius: "16px", background: `linear-gradient(135deg, ${THEME.colors.primary}, ${THEME.colors.primaryDark})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: "28px", fontFamily: THEME.fonts.display, color: THEME.colors.white, letterSpacing: "2px" },
@@ -485,7 +485,7 @@ const S = {
   btn2: { width: "100%", padding: "14px", background: "transparent", color: THEME.colors.textSecondary, border: `1px solid ${THEME.colors.border}`, borderRadius: THEME.radius.md, fontFamily: THEME.fonts.display, fontSize: "14px", letterSpacing: "2px", cursor: "pointer", marginTop: THEME.spacing.sm },
   err: { color: THEME.colors.error, fontSize: "13px", marginTop: THEME.spacing.sm, textAlign: "center" },
   lnk: { background: "none", border: "none", color: THEME.colors.primary, fontFamily: THEME.fonts.body, fontSize: "14px", cursor: "pointer", padding: 0, textDecoration: "underline" },
-  tabBar: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: "430px", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "10px 0 22px", background: THEME.colors.bg, borderTop: `1px solid ${THEME.colors.border}`, zIndex: 100 },
+  tabBar: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: "1200px", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "10px 0 22px", background: THEME.colors.bg, borderTop: `1px solid ${THEME.colors.border}`, zIndex: 100 },
   tabBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", background: "none", border: "none", cursor: "pointer", padding: "4px 10px" },
   tabLbl: { fontFamily: THEME.fonts.display, fontSize: "10px", letterSpacing: "1.5px" },
   card: { background: THEME.colors.surface, borderRadius: THEME.radius.lg, padding: THEME.spacing.lg, marginBottom: THEME.spacing.md, border: `1px solid ${THEME.colors.border}` },
@@ -1009,10 +1009,13 @@ const ScheduleScreen = () => {
 const ProfileScreen = () => {
   const { user, login, logout } = useAuth();
   const [editing, setEditing] = useState(false);
+  const ec = user.emergencyContact || {};
   const [form, setForm] = useState({
     firstName: user.firstName, lastName: user.lastName,
     phone: user.phone, email: user.email,
-    ecName: user.emergencyContact.name, ecPhone: user.emergencyContact.phone, ecRelation: user.emergencyContact.relation,
+    ecFirstName: ec.firstName || ec.name || "", ecLastName: ec.lastName || "",
+    ecEmail: ec.email || "", ecPhone: ec.phone || "",
+    ecAddress: ec.address || "", ecRelation: ec.relation || "",
   });
   const [bills, setBills] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1029,7 +1032,12 @@ const ProfileScreen = () => {
     const updated = await services.members.update(user.id, {
       firstName: form.firstName, lastName: form.lastName,
       phone: form.phone, email: form.email,
-      emergencyContact: { name: form.ecName, phone: form.ecPhone, relation: form.ecRelation },
+      emergencyContact: {
+        firstName: form.ecFirstName, lastName: form.ecLastName,
+        name: `${form.ecFirstName} ${form.ecLastName}`.trim(),
+        email: form.ecEmail, phone: form.ecPhone,
+        address: form.ecAddress, relation: form.ecRelation,
+      },
     });
     login(updated); // Update context
     setSaving(false);
@@ -1095,8 +1103,12 @@ const ProfileScreen = () => {
           ].map(x=><div key={x.k} style={S.inpGrp}><label style={{...S.lbl,fontSize:"11px"}}>{x.l}</label><input style={S.inp} value={form[x.k]} onChange={e=>set(x.k,e.target.value)} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>)}
 
           <div style={{...S.cardLbl,marginTop:THEME.spacing.md}}>Emergency Contact</div>
+          <div style={{display:"flex",gap:THEME.spacing.sm}}>
+            <div style={{flex:1}}>{[{k:"ecFirstName",l:"First Name"}].map(x=><div key={x.k} style={S.inpGrp}><label style={{...S.lbl,fontSize:"11px"}}>{x.l}</label><input style={S.inp} value={form[x.k]} onChange={e=>set(x.k,e.target.value)} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>)}</div>
+            <div style={{flex:1}}>{[{k:"ecLastName",l:"Last Name"}].map(x=><div key={x.k} style={S.inpGrp}><label style={{...S.lbl,fontSize:"11px"}}>{x.l}</label><input style={S.inp} value={form[x.k]} onChange={e=>set(x.k,e.target.value)} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>)}</div>
+          </div>
           {[
-            {k:"ecName",l:"Name"},{k:"ecPhone",l:"Phone"},{k:"ecRelation",l:"Relationship"},
+            {k:"ecEmail",l:"Email"},{k:"ecPhone",l:"Phone"},{k:"ecAddress",l:"Address"},{k:"ecRelation",l:"Relationship"},
           ].map(x=><div key={x.k} style={S.inpGrp}><label style={{...S.lbl,fontSize:"11px"}}>{x.l}</label><input style={S.inp} value={form[x.k]} onChange={e=>set(x.k,e.target.value)} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>)}
 
           <div style={{display:"flex",gap:THEME.spacing.sm,marginTop:THEME.spacing.md}}>
@@ -1114,7 +1126,30 @@ const ProfileScreen = () => {
           <div style={S.cardLbl}>Account Info</div>
           <InfoRow icon={<I.mail size={16} color={THEME.colors.textMuted}/>} label="Email" value={user.email} />
           <InfoRow icon={<I.phone size={16} color={THEME.colors.textMuted}/>} label="Phone" value={user.phone || "Not set"} />
-          <InfoRow icon={<I.shield size={16} color={THEME.colors.textMuted}/>} label="Emergency Contact" value={user.emergencyContact.name ? `${user.emergencyContact.name} (${user.emergencyContact.relation})` : "Not set"} />
+        </div>
+      )}
+
+      {/* Emergency Contact */}
+      {!editing && (
+        <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.warning}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+            <I.shield size={16} color={THEME.colors.warning}/>
+            <div style={S.cardLbl}>Emergency Contact</div>
+          </div>
+          {(() => {
+            const ec = user.emergencyContact || {};
+            const ecName = ec.firstName ? `${ec.firstName} ${ec.lastName || ""}`.trim() : ec.name || "";
+            if (!ecName) return <div style={{color:THEME.colors.textMuted,fontSize:"14px"}}>No emergency contact set. Tap Edit to add one.</div>;
+            return (
+              <>
+                <InfoRow icon={<I.user size={16} color={THEME.colors.textMuted}/>} label="Name" value={ecName} />
+                {ec.relation && <InfoRow icon={<I.users size={16} color={THEME.colors.textMuted}/>} label="Relationship" value={ec.relation} />}
+                {ec.email && <InfoRow icon={<I.mail size={16} color={THEME.colors.textMuted}/>} label="Email" value={ec.email} />}
+                {ec.phone && <InfoRow icon={<I.phone size={16} color={THEME.colors.textMuted}/>} label="Phone" value={ec.phone} />}
+                {ec.address && <InfoRow icon={<I.home size={16} color={THEME.colors.textMuted}/>} label="Address" value={ec.address} />}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -2205,6 +2240,7 @@ const AdminScreen = () => {
 
       <div style={{display:"flex",gap:"5px",marginBottom:THEME.spacing.lg}}>
         <TabBtn id="overview" label="Overview" />
+        <TabBtn id="users" label="Users" />
         <TabBtn id="roster" label="Roster" />
         <TabBtn id="wod" label="Program" />
         <TabBtn id="schedule" label="Schedule" />
@@ -2275,6 +2311,110 @@ const AdminScreen = () => {
                     <span style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"9px",marginLeft:"8px"}}>{w.type}</span>
                   </div>
                   <span style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{results.filter(r=>r.workoutId===w.id).length} results</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ===== USERS ===== */}
+      {tab === "users" && (
+        <>
+          {/* Admin Users */}
+          <div style={{marginBottom:THEME.spacing.lg}}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+              <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"12px",padding:"5px 14px"}}>
+                Admins & Coaches ({members.filter(m => m.role === "admin" || m.role === "coach").length})
+              </div>
+            </div>
+            {members.filter(m => m.role === "admin" || m.role === "coach").map(m => (
+              <div key={m.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+                  <div style={{
+                    ...S.avatar,
+                    background: m.role==="admin" ? `linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})` : THEME.colors.accentSubtle,
+                    color: m.role==="admin" ? THEME.colors.white : THEME.colors.accent,
+                  }}>{m.firstName.charAt(0)}{m.lastName.charAt(0)}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:"600",fontSize:"15px"}}>{m.firstName} {m.lastName}</div>
+                    <div style={{color:THEME.colors.textMuted,fontSize:"12px",marginTop:"2px"}}>{m.email}</div>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"4px"}}>
+                    <div style={{...S.badge,fontSize:"10px",
+                      background:m.role==="admin"?THEME.colors.primarySubtle:THEME.colors.accentSubtle,
+                      color:m.role==="admin"?THEME.colors.primary:THEME.colors.accent,
+                    }}>{m.role}</div>
+                    {/* Role toggle buttons */}
+                    {m.id !== user.id && (
+                      <div style={{display:"flex",gap:"4px"}}>
+                        {m.role !== "admin" && (
+                          <button onClick={async ()=>{await services.members.update(m.id,{role:"admin"});await load();}} style={{
+                            padding:"4px 8px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                            background:THEME.colors.primarySubtle,color:THEME.colors.primary,
+                            fontSize:"9px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                          }}>Make Admin</button>
+                        )}
+                        {m.role !== "coach" && (
+                          <button onClick={async ()=>{await services.members.update(m.id,{role:"coach"});await load();}} style={{
+                            padding:"4px 8px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                            background:THEME.colors.accentSubtle,color:THEME.colors.accent,
+                            fontSize:"9px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                          }}>Make Coach</button>
+                        )}
+                        <button onClick={async ()=>{await services.members.update(m.id,{role:"member"});await load();}} style={{
+                          padding:"4px 8px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                          background:THEME.colors.surfaceLight,color:THEME.colors.textMuted,
+                          fontSize:"9px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                        }}>Demote</button>
+                      </div>
+                    )}
+                    {m.id === user.id && <span style={{fontSize:"9px",color:THEME.colors.textMuted,fontStyle:"italic"}}>You</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Regular Members */}
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+              <div style={{...S.badge,background:THEME.colors.surfaceLight,color:THEME.colors.textSecondary,fontSize:"12px",padding:"5px 14px"}}>
+                Members ({members.filter(m => m.role === "member").length})
+              </div>
+            </div>
+            {members.filter(m => m.role === "member").length === 0 && (
+              <div style={{...S.card,textAlign:"center",padding:THEME.spacing.lg}}>
+                <div style={{color:THEME.colors.textMuted,fontSize:"14px"}}>No regular members yet</div>
+              </div>
+            )}
+            {members.filter(m => m.role === "member").map(m => (
+              <div key={m.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+                  <div style={{...S.avatar}}>{m.firstName.charAt(0)}{m.lastName.charAt(0)}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:"600",fontSize:"15px"}}>{m.firstName} {m.lastName}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:"8px",marginTop:"2px"}}>
+                      <span style={{color:THEME.colors.textMuted,fontSize:"12px"}}>{m.email}</span>
+                      <div style={{
+                        ...S.badge,fontSize:"8px",
+                        background:m.membershipStatus==="active"?THEME.colors.primarySubtle:THEME.colors.accentSubtle,
+                        color:m.membershipStatus==="active"?THEME.colors.primary:THEME.colors.warning,
+                      }}>{m.membershipStatus}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:"4px"}}>
+                    <button onClick={async ()=>{await services.members.update(m.id,{role:"coach"});await load();}} style={{
+                      padding:"6px 10px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                      background:THEME.colors.accentSubtle,color:THEME.colors.accent,
+                      fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                    }}>Make Coach</button>
+                    <button onClick={async ()=>{await services.members.update(m.id,{role:"admin"});await load();}} style={{
+                      padding:"6px 10px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                      background:THEME.colors.primarySubtle,color:THEME.colors.primary,
+                      fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                    }}>Make Admin</button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -3027,6 +3167,12 @@ export default function App() {
         input,textarea{transition:border-color 0.2s ease,box-shadow 0.2s ease;}
         input:focus,textarea:focus{border-color:${THEME.colors.primary} !important;box-shadow:0 0 0 3px ${THEME.colors.primarySubtle};}
         textarea{font-family:${THEME.fonts.body};}
+        @media (min-width: 768px) {
+          #root > div > div:last-child { padding-left: 32px; padding-right: 32px; }
+        }
+        @media (min-width: 1024px) {
+          #root > div > div:last-child { padding-left: 48px; padding-right: 48px; }
+        }
       `}</style>
       <div style={S.app}>
         <AuthContext.Provider value={{user,login,logout}}>
