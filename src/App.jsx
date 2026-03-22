@@ -444,6 +444,29 @@ const services = {
     },
   },
 
+  announcements: {
+    getActive: async () => {
+      const now = new Date().toISOString();
+      const { data } = await supabase.from('announcements').select('*')
+        .eq('gym_id', GYM_CONFIG.id).gte('expires_at', now).order('created_at', { ascending: false });
+      return (data || []).map(a => ({
+        id: a.id, gymId: a.gym_id, message: a.message,
+        createdBy: a.created_by, createdAt: a.created_at, expiresAt: a.expires_at,
+      }));
+    },
+    create: async (item) => {
+      const { data } = await supabase.from('announcements').insert({
+        gym_id: item.gymId || GYM_CONFIG.id, message: item.message,
+        created_by: item.createdBy, expires_at: item.expiresAt,
+      }).select().single();
+      return data;
+    },
+    delete: async (id) => {
+      await supabase.from('announcements').delete().eq('id', id);
+      return true;
+    },
+  },
+
   auth: {
     login: async (email, password) => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -485,6 +508,36 @@ let membersCache = [];
 // ============================================================
 const AuthContext = createContext(null);
 const useAuth = () => useContext(AuthContext);
+
+// Announcement context — loaded once and shared across screens
+const AnnouncementContext = createContext({ announcements: [], reload: () => {} });
+const useAnnouncements = () => useContext(AnnouncementContext);
+
+// Announcement Banner — displayed on Home, Schedule, Records, Feed
+const AnnouncementBanner = () => {
+  const { announcements } = useAnnouncements();
+  if (!announcements || announcements.length === 0) return null;
+  return (
+    <div style={{marginBottom:THEME.spacing.md}}>
+      {announcements.map(a => (
+        <div key={a.id} style={{
+          background:`linear-gradient(135deg,${THEME.colors.primary}22,${THEME.colors.primaryDark}22)`,
+          border:`1px solid ${THEME.colors.primary}44`,
+          borderRadius:THEME.radius.md,padding:"12px 16px",marginBottom:"6px",
+          display:"flex",alignItems:"flex-start",gap:"10px",
+        }}>
+          <span style={{fontSize:"16px",flexShrink:0,marginTop:"1px"}}>📢</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:"14px",color:THEME.colors.text,lineHeight:"1.5",whiteSpace:"pre-line"}}>{a.message}</div>
+            <div style={{fontSize:"10px",color:THEME.colors.textMuted,marginTop:"4px",fontFamily:THEME.fonts.display,letterSpacing:"1px"}}>
+              Expires {new Date(a.expiresAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 // ============================================================
 // ICONS
@@ -638,6 +691,7 @@ const DashboardScreen = () => {
           <span style={{color:THEME.colors.textMuted,fontSize:"12px"}}>{GYM_CONFIG.name}</span>
         </div>
       </div>
+      <AnnouncementBanner />
       <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
         <div style={S.statBox}><div style={S.statVal}>{sessions.reduce((a,s)=>a+(s.signups.includes(user.id)?1:0),0)}</div><div style={S.statLbl}>Classes Today</div></div>
         <div style={S.statBox}><div style={{...S.statVal,color:THEME.colors.accent}}>{myPrs.length}</div><div style={S.statLbl}>Recent PRs</div></div>
@@ -901,6 +955,7 @@ const ScheduleScreen = () => {
   return (
     <div style={S.screen}>
       <div style={{fontFamily:THEME.fonts.display,fontSize:"28px",letterSpacing:"1px",marginBottom:THEME.spacing.lg}}>Schedule</div>
+      <AnnouncementBanner />
 
       {/* Week Navigation */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:THEME.spacing.md}}>
@@ -1540,6 +1595,7 @@ const RecordsScreen = () => {
   return (
     <div style={S.screen}>
       <div style={{fontFamily:THEME.fonts.display,fontSize:"28px",letterSpacing:"1px",marginBottom:THEME.spacing.lg}}>Records</div>
+      <AnnouncementBanner />
 
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:"6px",marginBottom:THEME.spacing.lg}}>
@@ -1918,6 +1974,7 @@ const CommunityScreen = () => {
   return (
     <div style={S.screen}>
       <div style={{fontFamily:THEME.fonts.display,fontSize:"28px",letterSpacing:"1px",marginBottom:THEME.spacing.lg}}>Community</div>
+      <AnnouncementBanner />
 
       <div style={{display:"flex",gap:"6px",marginBottom:THEME.spacing.lg}}>
         <TabBtn id="feed" label="Activity Feed" />
@@ -2183,6 +2240,36 @@ const AdminScreen = () => {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  // Announcements
+  const { reload: reloadAnnouncements } = useAnnouncements();
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [announcementText, setAnnouncementText] = useState("");
+  const [announcementDays, setAnnouncementDays] = useState("3");
+  const [announcementPosting, setAnnouncementPosting] = useState(false);
+  const [activeAnnouncements, setActiveAnnouncements] = useState([]);
+
+  const loadAnnouncements = useCallback(async () => {
+    const active = await services.announcements.getActive();
+    setActiveAnnouncements(active);
+  }, []);
+
+  const handlePostAnnouncement = async () => {
+    if (!announcementText.trim()) return;
+    setAnnouncementPosting(true);
+    const days = Math.max(1, Number(announcementDays) || 3);
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + days);
+    await services.announcements.create({
+      gymId: GYM_CONFIG.id, message: announcementText.trim(),
+      createdBy: user.id, expiresAt: expiresAt.toISOString(),
+    });
+    setAnnouncementPosting(false);
+    setShowAnnouncementModal(false);
+    setAnnouncementText(""); setAnnouncementDays("3");
+    await loadAnnouncements();
+    reloadAnnouncements();
+  };
+
   // WOD Builder
   const [wodForm, setWodForm] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", notes:"", date:today(), targetTime:"", movements:[] });
   const [newMov, setNewMov] = useState({ name:"", reps:"", weights:{Rx:"",["Rx+"]:"",Mastered:"",Scaled:"",Foundation:""}, notes:"" });
@@ -2219,7 +2306,7 @@ const AdminScreen = () => {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadAnnouncements(); }, [load, loadAnnouncements]);
 
   const coaches = members.filter(m => m.role === "coach" || m.role === "admin");
   const coachName = (id) => { const m = members.find(x => x.id === id); return m ? m.firstName : "?"; };
@@ -3062,6 +3149,46 @@ const AdminScreen = () => {
       {/* ===== SCHEDULE BUILDER ===== */}
       {tab === "schedule" && (
         <>
+          {/* Announcement Section */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:THEME.spacing.md}}>
+            <div style={{fontFamily:THEME.fonts.display,fontSize:"12px",letterSpacing:"2px",color:THEME.colors.textMuted}}>
+              📢 Announcements ({activeAnnouncements.length} active)
+            </div>
+            <button onClick={()=>setShowAnnouncementModal(true)} style={{
+              display:"flex",alignItems:"center",gap:"6px",
+              padding:"8px 14px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+              background:THEME.colors.primarySubtle,color:THEME.colors.primary,
+              fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1px",
+            }}>
+              <I.plus size={14} color={THEME.colors.primary} /> Announcement
+            </button>
+          </div>
+
+          {/* Active announcements list */}
+          {activeAnnouncements.length > 0 && (
+            <div style={{marginBottom:THEME.spacing.md}}>
+              {activeAnnouncements.map(a => (
+                <div key={a.id} style={{
+                  ...S.card,padding:"12px 16px",marginBottom:"6px",
+                  borderLeft:`3px solid ${THEME.colors.primary}`,
+                  display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px",
+                }}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:"13px",color:THEME.colors.text,lineHeight:"1.4",whiteSpace:"pre-line"}}>{a.message}</div>
+                    <div style={{fontSize:"10px",color:THEME.colors.textMuted,marginTop:"4px"}}>
+                      Expires {new Date(a.expiresAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                    </div>
+                  </div>
+                  <button onClick={async ()=>{await services.announcements.delete(a.id);await loadAnnouncements();reloadAnnouncements();}} style={{
+                    background:"none",border:"none",cursor:"pointer",padding:"4px",flexShrink:0,
+                  }}>
+                    <I.trash size={14} color={THEME.colors.error} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={S.card}>
             <div style={S.cardLbl}>Add a Class Session</div>
 
@@ -3499,6 +3626,52 @@ const AdminScreen = () => {
 
       </>)}
 
+      {/* ===== ANNOUNCEMENT MODAL ===== */}
+      {showAnnouncementModal && (
+        <>
+          <div onClick={()=>{setShowAnnouncementModal(false);setAnnouncementText("");setAnnouncementDays("3");}} style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(4px)"}} />
+          <div style={{
+            position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",
+            zIndex:9999,width:"90%",maxWidth:"400px",
+            background:THEME.colors.surface,border:`1px solid ${THEME.colors.border}`,
+            borderRadius:THEME.radius.lg,padding:THEME.spacing.lg,
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+              <span style={{fontSize:"20px"}}>📢</span>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"20px",letterSpacing:"1px"}}>New Announcement</div>
+            </div>
+
+            <label style={{...S.lbl,fontSize:"11px"}}>Announcement Message</label>
+            <textarea style={{...S.inp,minHeight:"100px",resize:"none",overflow:"hidden",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"14px",marginBottom:THEME.spacing.md}}
+              value={announcementText} onChange={e=>{setAnnouncementText(e.target.value);autoResize(e);}}
+              placeholder="e.g. Gym closed this Saturday for maintenance. Open Gym on Sunday instead!"
+              onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+
+            <label style={{...S.lbl,fontSize:"11px"}}>Display for how many days?</label>
+            <div style={{display:"flex",gap:"6px",marginBottom:THEME.spacing.lg}}>
+              {["1","3","5","7","14","30"].map(d => (
+                <button key={d} onClick={()=>setAnnouncementDays(d)} style={{
+                  flex:1,padding:"10px 4px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                  background:announcementDays===d?THEME.colors.primary:THEME.colors.surfaceLight,
+                  color:announcementDays===d?THEME.colors.white:THEME.colors.textMuted,
+                  fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"0.5px",
+                }}>{d}</button>
+              ))}
+            </div>
+
+            <div style={{display:"flex",gap:THEME.spacing.sm}}>
+              <button onClick={()=>{setShowAnnouncementModal(false);setAnnouncementText("");setAnnouncementDays("3");}} style={{...S.btn2,flex:1,marginTop:0}}>Cancel</button>
+              <button onClick={handlePostAnnouncement} disabled={!announcementText.trim()||announcementPosting} style={{
+                ...S.btn1,flex:1,marginTop:0,
+                opacity:(!announcementText.trim()||announcementPosting)?0.5:1,
+              }}>
+                {announcementPosting ? "Posting..." : "Post"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ===== REMOVAL MODAL ===== */}
       {removeModal && (
         <>
@@ -3565,15 +3738,24 @@ const MainApp = () => {
   const settingsCtx = useContext(SettingsContext);
   const [tab, setTab] = useState("home");
   const [, forceUpdate] = useState(0);
+  const [announcements, setAnnouncements] = useState([]);
   const isStaff = user.role==="admin"||user.role==="coach";
   const screens = {home:DashboardScreen,schedule:ScheduleScreen,records:RecordsScreen,community:CommunityScreen,profile:ProfileScreen,admin:AdminScreen};
   const Sc = screens[tab]||DashboardScreen;
 
+  const loadAnnouncements = useCallback(async () => {
+    const active = await services.announcements.getActive();
+    setAnnouncements(active);
+  }, []);
+
   // Re-render when settings change
   useEffect(() => { forceUpdate(v => v + 1); }, [settingsCtx.version]);
 
+  // Load announcements on mount
+  useEffect(() => { loadAnnouncements(); }, [loadAnnouncements]);
+
   return (
-    <>
+    <AnnouncementContext.Provider value={{announcements, reload: loadAnnouncements}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:`14px ${THEME.spacing.md} 0`,position:"sticky",top:0,zIndex:50,background:THEME.colors.bg}}>
         <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
           {GYM_CONFIG.logoUrl ? (
@@ -3587,7 +3769,7 @@ const MainApp = () => {
       </div>
       <Sc />
       <TabBar active={tab} setActive={setTab} isStaff={isStaff} />
-    </>
+    </AnnouncementContext.Provider>
   );
 };
 
