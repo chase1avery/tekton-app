@@ -552,8 +552,8 @@ const AnnouncementBanner = () => {
     <div style={{marginBottom:THEME.spacing.md}}>
       {announcements.map(a => (
         <div key={a.id} style={{
-          background:"rgba(231, 76, 60, 0.85)",
-          border:"1px solid rgba(231, 76, 60, 0.95)",
+          background:"rgba(231, 76, 60, 0.80)",
+          border:"1px solid rgba(231, 76, 60, 0.90)",
           borderRadius:THEME.radius.md,padding:"12px 16px",marginBottom:"6px",
           display:"flex",alignItems:"flex-start",gap:"10px",
         }}>
