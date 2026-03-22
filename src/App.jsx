@@ -3648,16 +3648,9 @@ const AdminScreen = () => {
               onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
 
             <label style={{...S.lbl,fontSize:"11px"}}>Display for how many days?</label>
-            <div style={{display:"flex",gap:"6px",marginBottom:THEME.spacing.lg}}>
-              {["1","3","5","7","14","30"].map(d => (
-                <button key={d} onClick={()=>setAnnouncementDays(d)} style={{
-                  flex:1,padding:"10px 4px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
-                  background:announcementDays===d?THEME.colors.primary:THEME.colors.surfaceLight,
-                  color:announcementDays===d?THEME.colors.white:THEME.colors.textMuted,
-                  fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"0.5px",
-                }}>{d}</button>
-              ))}
-            </div>
+            <input style={{...S.inp,marginBottom:THEME.spacing.lg}} type="number" min="1" value={announcementDays}
+              onChange={e=>setAnnouncementDays(e.target.value)} placeholder="e.g. 3"
+              onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
 
             <div style={{display:"flex",gap:THEME.spacing.sm}}>
               <button onClick={()=>{setShowAnnouncementModal(false);setAnnouncementText("");setAnnouncementDays("3");}} style={{...S.btn2,flex:1,marginTop:0}}>Cancel</button>
