@@ -531,7 +531,7 @@ const renderWithLinks = (text) => {
   return segments.map((seg, i) => {
     const linkMatch = seg.match(/%%LINK%%(.+?)%%URL%%(.+?)%%ENDLINK%%/);
     if (linkMatch) {
-      return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" style={{color:THEME.colors.white,fontWeight:"600",textDecoration:"underline"}}>{linkMatch[1]}</a>;
+      return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" style={{color:THEME.colors.error,fontWeight:"600",textDecoration:"underline"}}>{linkMatch[1]}</a>;
     }
     // Check for plain URLs in remaining text
     const urlParts = seg.split(urlRegex);
@@ -552,15 +552,15 @@ const AnnouncementBanner = () => {
     <div style={{marginBottom:THEME.spacing.md}}>
       {announcements.map(a => (
         <div key={a.id} style={{
-          background:"rgba(231, 76, 60, 0.80)",
-          border:"1px solid rgba(231, 76, 60, 0.90)",
+          background:"rgba(231, 76, 60, 0.20)",
+          border:"1px solid rgba(231, 76, 60, 0.35)",
           borderRadius:THEME.radius.md,padding:"12px 16px",marginBottom:"6px",
           display:"flex",alignItems:"flex-start",gap:"10px",
         }}>
           <span style={{fontSize:"16px",flexShrink:0,marginTop:"1px"}}>📢</span>
           <div style={{flex:1}}>
-            <div style={{fontSize:"14px",color:THEME.colors.white,lineHeight:"1.5",whiteSpace:"pre-line"}}>{renderWithLinks(a.message)}</div>
-            <div style={{fontSize:"10px",color:"rgba(255,255,255,0.6)",marginTop:"4px",fontFamily:THEME.fonts.display,letterSpacing:"1px"}}>
+            <div style={{fontSize:"14px",color:THEME.colors.text,lineHeight:"1.5",whiteSpace:"pre-line"}}>{renderWithLinks(a.message)}</div>
+            <div style={{fontSize:"10px",color:THEME.colors.textMuted,marginTop:"4px",fontFamily:THEME.fonts.display,letterSpacing:"1px"}}>
               Expires {new Date(a.expiresAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
             </div>
           </div>
