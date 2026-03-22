@@ -513,6 +513,37 @@ const useAuth = () => useContext(AuthContext);
 const AnnouncementContext = createContext({ announcements: [], reload: () => {} });
 const useAnnouncements = () => useContext(AnnouncementContext);
 
+// Helper to render text with embedded links
+// Supports markdown-style links: [link text](url) and plain URLs
+const renderWithLinks = (text) => {
+  if (!text) return null;
+  // First handle markdown links [text](url)
+  const mdLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  // Then handle plain URLs
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  
+  const parts = [];
+  let last = 0;
+  let match;
+  const combined = text.replace(mdLinkRegex, (m, label, url) => `%%LINK%%${label}%%URL%%${url}%%ENDLINK%%`);
+  const segments = combined.split(/(%%LINK%%.*?%%ENDLINK%%)/);
+  
+  return segments.map((seg, i) => {
+    const linkMatch = seg.match(/%%LINK%%(.+?)%%URL%%(.+?)%%ENDLINK%%/);
+    if (linkMatch) {
+      return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" style={{color:THEME.colors.white,fontWeight:"600",textDecoration:"underline"}}>{linkMatch[1]}</a>;
+    }
+    // Check for plain URLs in remaining text
+    const urlParts = seg.split(urlRegex);
+    return urlParts.map((part, j) => {
+      if (part.match(urlRegex)) {
+        return <a key={`${i}-${j}`} href={part} target="_blank" rel="noopener noreferrer" style={{color:THEME.colors.white,fontWeight:"600",textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>;
+      }
+      return part;
+    });
+  });
+};
+
 // Announcement Banner — displayed on Home, Schedule, Records, Feed
 const AnnouncementBanner = () => {
   const { announcements } = useAnnouncements();
@@ -521,15 +552,15 @@ const AnnouncementBanner = () => {
     <div style={{marginBottom:THEME.spacing.md}}>
       {announcements.map(a => (
         <div key={a.id} style={{
-          background:`linear-gradient(135deg,${THEME.colors.primary}22,${THEME.colors.primaryDark}22)`,
-          border:`1px solid ${THEME.colors.primary}44`,
+          background:"rgba(231, 76, 60, 0.85)",
+          border:"1px solid rgba(231, 76, 60, 0.95)",
           borderRadius:THEME.radius.md,padding:"12px 16px",marginBottom:"6px",
           display:"flex",alignItems:"flex-start",gap:"10px",
         }}>
           <span style={{fontSize:"16px",flexShrink:0,marginTop:"1px"}}>📢</span>
           <div style={{flex:1}}>
-            <div style={{fontSize:"14px",color:THEME.colors.text,lineHeight:"1.5",whiteSpace:"pre-line"}}>{a.message}</div>
-            <div style={{fontSize:"10px",color:THEME.colors.textMuted,marginTop:"4px",fontFamily:THEME.fonts.display,letterSpacing:"1px"}}>
+            <div style={{fontSize:"14px",color:THEME.colors.white,lineHeight:"1.5",whiteSpace:"pre-line"}}>{renderWithLinks(a.message)}</div>
+            <div style={{fontSize:"10px",color:"rgba(255,255,255,0.6)",marginTop:"4px",fontFamily:THEME.fonts.display,letterSpacing:"1px"}}>
               Expires {new Date(a.expiresAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
             </div>
           </div>
@@ -3644,8 +3675,12 @@ const AdminScreen = () => {
             <label style={{...S.lbl,fontSize:"11px"}}>Announcement Message</label>
             <textarea style={{...S.inp,minHeight:"100px",resize:"none",overflow:"hidden",lineHeight:"1.5",fontFamily:THEME.fonts.body,fontSize:"14px",marginBottom:THEME.spacing.md}}
               value={announcementText} onChange={e=>{setAnnouncementText(e.target.value);autoResize(e);}}
-              placeholder="e.g. Gym closed this Saturday for maintenance. Open Gym on Sunday instead!"
+              placeholder={"e.g. Gym closed this Saturday for maintenance.\n\nLinks: paste a URL or use [click here](https://example.com)"}
               onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+
+            <div style={{fontSize:"11px",color:THEME.colors.textMuted,marginBottom:THEME.spacing.md,lineHeight:"1.5"}}>
+              💡 To add a link, paste a URL directly or use: <span style={{fontFamily:THEME.fonts.mono,fontSize:"10px",color:THEME.colors.textSecondary}}>[link text](https://url.com)</span>
+            </div>
 
             <label style={{...S.lbl,fontSize:"11px"}}>Display for how many days?</label>
             <input style={{...S.inp,marginBottom:THEME.spacing.lg}} type="number" min="1" value={announcementDays}
