@@ -142,7 +142,7 @@ const ProfileScreen = () => {
       })()}
 
       {/* Quick Actions */}
-      <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:0}}>
+      <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
         <button onClick={openNutrition} style={{
           flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
           padding:"14px",borderRadius:THEME.radius.lg,border:`1px solid ${THEME.colors.border}`,
