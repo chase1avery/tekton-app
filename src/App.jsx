@@ -1,6 +1,6 @@
 // ============================================================
 // FORGE — CrossFit Gym Management PWA
-// App Shell — Routes, Auth, Settings, Announcements
+// App Shell — Routes, Auth, Settings, Announcements, Messages
 // ============================================================
 import { useState, useEffect, useCallback, useContext } from "react";
 import {
@@ -18,6 +18,14 @@ import ProfileScreen from "./screens/profile";
 import RecordsScreen from "./screens/records";
 import CommunityScreen from "./screens/community";
 import AdminScreen from "./screens/admin";
+import MessagesScreen from "./screens/messages";
+
+// Chat Icon
+const ChatIcon = ({ size = 20, color }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+  </svg>
+);
 
 // ============================================================
 // TAB BAR
@@ -51,8 +59,10 @@ const MainApp = () => {
   const { user, logout } = useContext(AuthContext);
   const settingsCtx = useContext(SettingsContext);
   const [tab, setTab] = useState("home");
+  const [showMessages, setShowMessages] = useState(false);
   const [, forceUpdate] = useState(0);
   const [announcements, setAnnouncements] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const isStaff = user.role === "admin" || user.role === "coach";
 
   const screens = {
@@ -66,8 +76,32 @@ const MainApp = () => {
     setAnnouncements(active);
   }, []);
 
+  const loadUnreadCount = useCallback(async () => {
+    try {
+      const { data: convos } = await supabase.from('conversations').select('id').or(`member_id.eq.${user.id},coach_id.eq.${user.id}`);
+      if (!convos || convos.length === 0) { setUnreadCount(0); return; }
+      const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true }).in('conversation_id', convos.map(c => c.id)).neq('sender_id', user.id).is('read_at', null);
+      setUnreadCount(count || 0);
+    } catch (e) { setUnreadCount(0); }
+  }, [user.id]);
+
   useEffect(() => { forceUpdate(v => v + 1); }, [settingsCtx.version]);
-  useEffect(() => { loadAnnouncements(); }, [loadAnnouncements]);
+  useEffect(() => { loadAnnouncements(); loadUnreadCount(); }, [loadAnnouncements, loadUnreadCount]);
+
+  // Realtime unread badge
+  useEffect(() => {
+    const channel = supabase.channel('unread-badge').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => { loadUnreadCount(); }).subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [loadUnreadCount]);
+
+  if (showMessages) {
+    return (
+      <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
+        <MessagesScreen onBack={() => { setShowMessages(false); loadUnreadCount(); }} />
+        <TabBar active={tab} setActive={(t) => { setShowMessages(false); setTab(t); }} isStaff={isStaff} />
+      </AnnouncementContext.Provider>
+    );
+  }
 
   return (
     <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
@@ -80,7 +114,15 @@ const MainApp = () => {
           )}
           <span style={{ fontFamily: THEME.fonts.display, fontSize: "16px", color: THEME.colors.primary, letterSpacing: "3px" }}>{GYM_CONFIG.shortName}</span>
         </div>
-        <button onClick={logout} style={{ background: "none", border: "none", cursor: "pointer", padding: "8px" }}><I.out size={18} color={THEME.colors.textMuted} /></button>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <button onClick={() => setShowMessages(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: "8px", position: "relative" }}>
+            <ChatIcon size={20} color={THEME.colors.textMuted} />
+            {unreadCount > 0 && (
+              <div style={{ position: "absolute", top: "2px", right: "2px", minWidth: "16px", height: "16px", borderRadius: "8px", background: THEME.colors.error, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: THEME.fonts.display, fontSize: "9px", color: THEME.colors.white, padding: "0 4px", border: `2px solid ${THEME.colors.bg}` }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+            )}
+          </button>
+          <button onClick={logout} style={{ background: "none", border: "none", cursor: "pointer", padding: "8px" }}><I.out size={18} color={THEME.colors.textMuted} /></button>
+        </div>
       </div>
       <Sc />
       <TabBar active={tab} setActive={setTab} isStaff={isStaff} />
@@ -97,24 +139,16 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [settingsVersion, setSettingsVersion] = useState(0);
   const login = useCallback((u) => setUser(u), []);
-  const logout = useCallback(async () => {
-    await services.auth.logout();
-    setUser(null);
-    setView("login");
-  }, []);
+  const logout = useCallback(async () => { await services.auth.logout(); setUser(null); setView("login"); }, []);
 
   const loadGymSettings = useCallback(async () => {
     try {
       const { data } = await supabase.from("gym_settings").select("*").eq("gym_id", GYM_CONFIG.id).single();
-      if (data) {
-        applyGymSettings({ name: data.name, shortName: data.short_name, primaryColor: data.primary_color, logoUrl: data.logo_url });
-      }
-    } catch (e) { /* No settings saved yet */ }
+      if (data) applyGymSettings({ name: data.name, shortName: data.short_name, primaryColor: data.primary_color, logoUrl: data.logo_url });
+    } catch (e) { /* defaults */ }
   }, []);
 
-  const refreshSettings = useCallback(() => {
-    loadGymSettings().then(() => setSettingsVersion(v => v + 1));
-  }, [loadGymSettings]);
+  const refreshSettings = useCallback(() => { loadGymSettings().then(() => setSettingsVersion(v => v + 1)); }, [loadGymSettings]);
 
   useEffect(() => {
     (async () => {
@@ -153,11 +187,7 @@ export default function App() {
       <style>{globalCSS(THEME)}</style>
       <div style={S.app}>
         <AuthContext.Provider value={{ user, login, logout }}>
-          {!user ? (
-            view === "login"
-              ? <LoginScreen onSwitch={() => setView("signup")} onLogin={login} />
-              : <SignupScreen onSwitch={() => setView("login")} onLogin={login} />
-          ) : <MainApp />}
+          {!user ? (view === "login" ? <LoginScreen onSwitch={() => setView("signup")} onLogin={login} /> : <SignupScreen onSwitch={() => setView("login")} onLogin={login} />) : <MainApp />}
         </AuthContext.Provider>
       </div>
     </SettingsContext.Provider>
