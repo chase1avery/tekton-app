@@ -131,6 +131,114 @@ const autoResize = (e) => {
 const WEIGHT_LEVELS = ["Rx", "Rx+", "Mastered", "Scaled", "Foundation"];
 
 // ============================================================
+// STREAK CALCULATOR
+// ============================================================
+// Returns { current: number, longest: number, totalSessions: number }
+// A streak week = Mon-Sun with 4+ session signups
+const calcStreak = (allSessions, memberId) => {
+  // Get all sessions this member signed up for, sorted by date
+  const memberSessions = allSessions
+    .filter(s => s.signups && s.signups.includes(memberId))
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  if (memberSessions.length === 0) return { current: 0, longest: 0, totalSessions: 0 };
+
+  // Group sessions by ISO week (Mon-Sun)
+  const getWeekKey = (dateStr) => {
+    const d = new Date(dateStr + "T12:00:00");
+    const day = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - ((day + 6) % 7));
+    return mon.toISOString().split("T")[0]; // Monday's date as key
+  };
+
+  const weekCounts = {};
+  memberSessions.forEach(s => {
+    const wk = getWeekKey(s.date);
+    weekCounts[wk] = (weekCounts[wk] || 0) + 1;
+  });
+
+  // Get all weeks sorted chronologically
+  const sortedWeeks = Object.keys(weekCounts).sort();
+
+  // Calculate streaks — a qualifying week has 4+ sessions
+  let current = 0;
+  let longest = 0;
+  let streak = 0;
+
+  for (let i = 0; i < sortedWeeks.length; i++) {
+    const wk = sortedWeeks[i];
+    if (weekCounts[wk] >= 4) {
+      // Check if this week is consecutive to the previous qualifying week
+      if (i > 0) {
+        const prevWeek = new Date(sortedWeeks[i - 1] + "T12:00:00");
+        const thisWeek = new Date(wk + "T12:00:00");
+        const diff = (thisWeek - prevWeek) / (1000 * 60 * 60 * 24);
+        if (diff === 7 && weekCounts[sortedWeeks[i - 1]] >= 4) {
+          streak++;
+        } else {
+          streak = 1;
+        }
+      } else {
+        streak = 1;
+      }
+      longest = Math.max(longest, streak);
+    } else {
+      streak = 0;
+    }
+  }
+
+  // Check if current week qualifies for active streak
+  const currentWeekKey = getWeekKey(today());
+  const lastWeekDate = new Date(currentWeekKey + "T12:00:00");
+  lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+  const lastWeekKey = lastWeekDate.toISOString().split("T")[0];
+
+  // Current streak: count backwards from current/last qualifying week
+  current = 0;
+  const currentWeekQualifies = (weekCounts[currentWeekKey] || 0) >= 4;
+  const lastWeekQualifies = (weekCounts[lastWeekKey] || 0) >= 4;
+
+  if (currentWeekQualifies || lastWeekQualifies) {
+    // Walk backwards from the most recent qualifying week
+    let checkWeek = currentWeekQualifies ? currentWeekKey : lastWeekKey;
+    while (weekCounts[checkWeek] && weekCounts[checkWeek] >= 4) {
+      current++;
+      const prev = new Date(checkWeek + "T12:00:00");
+      prev.setDate(prev.getDate() - 7);
+      checkWeek = prev.toISOString().split("T")[0];
+    }
+  }
+
+  return { current, longest: Math.max(longest, current), totalSessions: memberSessions.length };
+};
+
+// Streak cache — populated when sessions load
+let streakCache = {}; // { memberId: { current, longest, totalSessions } }
+
+const getStreak = (memberId) => streakCache[memberId] || { current: 0, longest: 0, totalSessions: 0 };
+
+// Animated Flame Badge Component
+const FlameStreak = ({ count, size = "md" }) => {
+  if (!count || count < 1) return null;
+  const sizes = { sm: { w: 28, h: 28, font: 10, flame: 14 }, md: { w: 36, h: 36, font: 12, flame: 18 }, lg: { w: 48, h: 48, font: 16, flame: 24 } };
+  const s = sizes[size] || sizes.md;
+  return (
+    <div style={{
+      position: "relative", width: `${s.w}px`, height: `${s.h}px`,
+      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+    }}>
+      <span className="flame-anim" style={{ fontSize: `${s.flame}px`, position: "absolute", top: "-2px" }}>🔥</span>
+      <span style={{
+        position: "relative", zIndex: 1, fontFamily: THEME.fonts.display,
+        fontSize: `${s.font}px`, color: THEME.colors.white, fontWeight: "700",
+        textShadow: "0 1px 3px rgba(0,0,0,0.5)", marginTop: "2px",
+      }}>{count}</span>
+    </div>
+  );
+};
+
+// ============================================================
 // SUPABASE CLIENT
 // ============================================================
 import { createClient } from '@supabase/supabase-js';
@@ -703,6 +811,8 @@ const DashboardScreen = () => {
       services.prs.getByField("memberId", user.id),
     ]);
     membersCache = allMembers;
+    // Calculate streaks for all members
+    allMembers.forEach(m => { streakCache[m.id] = calcStreak(allSessions, m.id); });
     setSessions(allSessions.filter(s => s.date === td));
     setAllWorkouts(wods);
     setWod(wods.find(w => w.date.startsWith(td)) || null);
@@ -726,7 +836,14 @@ const DashboardScreen = () => {
       <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
         <div style={S.statBox}><div style={S.statVal}>{sessions.reduce((a,s)=>a+(s.signups.includes(user.id)?1:0),0)}</div><div style={S.statLbl}>Classes Today</div></div>
         <div style={S.statBox}><div style={{...S.statVal,color:THEME.colors.accent}}>{myPrs.length}</div><div style={S.statLbl}>Recent PRs</div></div>
-        <div style={S.statBox}><div style={{...S.statVal,color:THEME.colors.primary,fontSize:"16px"}}>{user.membershipStatus==="active"?"Active":"Paused"}</div><div style={S.statLbl}>Status</div></div>
+        <div style={S.statBox}>
+          {getStreak(user.id).current > 0 ? (
+            <div style={{display:"flex",justifyContent:"center"}}><FlameStreak count={getStreak(user.id).current} size="md" /></div>
+          ) : (
+            <div style={{...S.statVal,color:THEME.colors.textMuted}}>0</div>
+          )}
+          <div style={S.statLbl}>Streak</div>
+        </div>
       </div>
       {wod&&<div style={{...S.card,borderLeft:`3px solid ${THEME.colors.primary}`}}>
         <div style={S.cardLbl}>Today's WOD</div>
@@ -1204,6 +1321,10 @@ const ProfileScreen = () => {
 
   useEffect(() => {
     services.billing.getByField("memberId", user.id).then(setBills);
+    // Load sessions for streak calculation
+    services.sessions.getAll().then(allSessions => {
+      streakCache[user.id] = calcStreak(allSessions, user.id);
+    });
   }, [user.id]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -1296,6 +1417,30 @@ const ProfileScreen = () => {
           </div>
         </div>
       </div>
+
+      {/* Streak Stats */}
+      {(() => {
+        const streak = getStreak(user.id);
+        return (
+          <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:0}}>
+            <div style={{...S.statBox,display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
+                {streak.current > 0 && <FlameStreak count={streak.current} size="md" />}
+                {streak.current === 0 && <div style={{...S.statVal,fontSize:"20px",color:THEME.colors.textMuted}}>0</div>}
+              </div>
+              <div style={S.statLbl}>Current Streak</div>
+            </div>
+            <div style={S.statBox}>
+              <div style={{...S.statVal,fontSize:"20px",color:THEME.colors.accent}}>{streak.longest}</div>
+              <div style={S.statLbl}>Longest Streak</div>
+            </div>
+            <div style={S.statBox}>
+              <div style={{...S.statVal,fontSize:"20px",color:THEME.colors.primary}}>{streak.totalSessions}</div>
+              <div style={S.statLbl}>Total Sessions</div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Edit Mode */}
       {editing && (
@@ -1937,14 +2082,17 @@ const CommunityScreen = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [r, w, m] = await Promise.all([
+    const [r, w, m, s] = await Promise.all([
       services.results.getAll(),
       services.workouts.getAll(),
       services.members.getAll(),
+      services.sessions.getAll(),
     ]);
     setResults(r.sort((a, b) => new Date(b.date) - new Date(a.date)));
     setWorkouts(w);
     setMembers(m);
+    // Update streak cache
+    m.forEach(mb => { streakCache[mb.id] = calcStreak(s, mb.id); });
     setLoading(false);
   }, []);
 
@@ -2031,6 +2179,47 @@ const CommunityScreen = () => {
             </div>
           </div>
 
+          {/* Milestone Celebrations */}
+          {(() => {
+            const milestones = [];
+            members.forEach(m => {
+              const s = getStreak(m.id);
+              if (s.totalSessions > 0 && s.totalSessions % 50 === 0) {
+                milestones.push({ member: m, sessions: s.totalSessions, streak: s.current });
+              }
+            });
+            if (milestones.length === 0) return null;
+            return milestones.map(ms => (
+              <div key={`milestone-${ms.member.id}`} style={{
+                ...S.card, padding: THEME.spacing.md, marginBottom: "10px",
+                borderLeft: `3px solid ${THEME.colors.accent}`,
+                background: `linear-gradient(135deg, ${THEME.colors.surface}, ${subtleHex(THEME.colors.accent, 0.08)})`,
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+                  <div style={{
+                    width:"48px",height:"48px",borderRadius:THEME.radius.full,
+                    background:`linear-gradient(135deg,${THEME.colors.accent},${darkenHex(THEME.colors.accent)})`,
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:"24px",flexShrink:0,
+                  }}>🏆</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontFamily:THEME.fonts.display,fontSize:"18px",letterSpacing:"0.5px",color:THEME.colors.accent}}>
+                      Milestone!
+                    </div>
+                    <div style={{fontSize:"14px",color:THEME.colors.text,marginTop:"2px"}}>
+                      <strong>{ms.member.firstName} {ms.member.lastName}</strong> hit <strong>{ms.sessions} sessions</strong>!
+                    </div>
+                    {ms.streak > 0 && (
+                      <div style={{display:"flex",alignItems:"center",gap:"4px",marginTop:"4px"}}>
+                        <FlameStreak count={ms.streak} size="sm" />
+                        <span style={{fontSize:"12px",color:THEME.colors.textMuted}}>week streak active</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ));
+          })()}
+
           {results.map(r => {
             const wod = getWod(r.workoutId);
             const fives = r.highFives || [];
@@ -2046,7 +2235,10 @@ const CommunityScreen = () => {
                 <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
                   <div style={S.avatar}>{mName(r.memberId).charAt(0)}</div>
                   <div style={{flex:1}}>
-                    <div style={{fontWeight:"600",fontSize:"14px"}}>{mName(r.memberId)}{isMe && <span style={{color:THEME.colors.textMuted,fontWeight:"400"}}> (you)</span>}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                      <span style={{fontWeight:"600",fontSize:"14px"}}>{mName(r.memberId)}{isMe && <span style={{color:THEME.colors.textMuted,fontWeight:"400"}}> (you)</span>}</span>
+                      <FlameStreak count={getStreak(r.memberId).current} size="sm" />
+                    </div>
                     <div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{timeAgo(r.date)}</div>
                   </div>
                   {r.rx && <div style={{...S.badge,background:THEME.colors.accentSubtle,color:THEME.colors.accent,fontSize:"9px"}}>Rx</div>}
@@ -3882,6 +4074,13 @@ export default function App() {
         ::placeholder{color:${THEME.colors.textMuted};}
         button{transition:all 0.15s ease;-webkit-tap-highlight-color:transparent;}
         button:active{transform:scale(0.97);}
+        @keyframes flameFlicker {
+          0%, 100% { transform: scale(1) rotate(-3deg); }
+          25% { transform: scale(1.1) rotate(3deg); }
+          50% { transform: scale(0.95) rotate(-2deg); }
+          75% { transform: scale(1.05) rotate(2deg); }
+        }
+        .flame-anim { animation: flameFlicker 0.8s ease-in-out infinite; display: inline-block; }
         input,textarea{transition:border-color 0.2s ease,box-shadow 0.2s ease;}
         input:focus,textarea:focus{border-color:${THEME.colors.primary} !important;box-shadow:0 0 0 3px ${THEME.colors.primarySubtle};}
         textarea{font-family:${THEME.fonts.body},'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;}
