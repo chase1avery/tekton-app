@@ -20,7 +20,7 @@ const ProfileScreen = () => {
     services.billing.getByField("memberId", user.id).then(setBills);
     // Load sessions for streak calculation
     services.sessions.getAll().then(allSessions => {
-      streakCache[user.id] = calcStreak(allSessions, user.id);
+      setStreakCache(user.id, calcStreak(allSessions, user.id));
     });
   }, [user.id]);
 

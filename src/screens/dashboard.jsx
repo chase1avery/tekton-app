@@ -17,9 +17,9 @@ const DashboardScreen = () => {
       services.results.getAll(),
       services.prs.getByField("memberId", user.id),
     ]);
-    membersCache = allMembers;
+    setMembersCache(allMembers);
     // Calculate streaks for all members
-    allMembers.forEach(m => { streakCache[m.id] = calcStreak(allSessions, m.id); });
+    allMembers.forEach(m => { setStreakCache(m.id, calcStreak(allSessions, m.id)); });
     setSessions(allSessions.filter(s => s.date === td));
     setAllWorkouts(wods);
     setWod(wods.find(w => w.date.startsWith(td)) || null);

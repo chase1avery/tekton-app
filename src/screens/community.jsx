@@ -22,7 +22,7 @@ const CommunityScreen = () => {
     setWorkouts(w);
     setMembers(m);
     // Update streak cache
-    m.forEach(mb => { streakCache[mb.id] = calcStreak(s, mb.id); });
+    m.forEach(mb => { setStreakCache(mb.id, calcStreak(s, mb.id)); });
     setLoading(false);
   }, []);
 
