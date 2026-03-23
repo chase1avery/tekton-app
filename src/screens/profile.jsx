@@ -142,19 +142,19 @@ const ProfileScreen = () => {
       })()}
 
       {/* Quick Actions */}
-      <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+      <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.lg}}>
         <button onClick={openNutrition} style={{
           flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
-          padding:"14px",borderRadius:THEME.radius.lg,border:`1px solid ${THEME.colors.border}`,
-          background:THEME.colors.surface,cursor:"pointer",
+          padding:"14px",borderRadius:THEME.radius.lg,border:"1px solid rgba(243, 156, 18, 0.25)",
+          background:"rgba(243, 156, 18, 0.20)",cursor:"pointer",
         }}>
           <span style={{fontSize:"18px"}}>🥗</span>
-          <span style={{fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"1.5px",color:THEME.colors.primary}}>Nutrition</span>
+          <span style={{fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"1.5px",color:"#F39C12"}}>Nutrition</span>
         </button>
         <button onClick={openMessages} style={{
           flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
-          padding:"14px",borderRadius:THEME.radius.lg,border:`1px solid ${THEME.colors.border}`,
-          background:THEME.colors.surface,cursor:"pointer",
+          padding:"14px",borderRadius:THEME.radius.lg,border:"1px solid rgba(45, 140, 78, 0.25)",
+          background:"rgba(45, 140, 78, 0.20)",cursor:"pointer",
         }}>
           <span style={{fontSize:"18px"}}>💬</span>
           <span style={{fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"1.5px",color:THEME.colors.primary}}>Messages</span>
