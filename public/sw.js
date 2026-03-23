@@ -1,9 +1,9 @@
 // ============================================================
-// Tekton Fitness — Service Worker
-// Handles offline caching, background sync, and push readiness
+// FORGE — Service Worker
+// Handles offline caching, push notifications, background sync
 // ============================================================
 
-const CACHE_NAME = 'tekton-v1';
+const CACHE_NAME = 'forge-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -43,12 +43,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
-
-  // Skip non-GET requests
   if (request.method !== 'GET') return;
 
-  // API requests: network first, fall back to cache
-  if (url.pathname.startsWith('/api/')) {
+  if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase')) {
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -61,12 +58,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache first, fall back to network
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
-        // Cache successful responses
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
@@ -74,7 +69,6 @@ self.addEventListener('fetch', (event) => {
         return response;
       });
     }).catch(() => {
-      // Offline fallback for navigation
       if (request.mode === 'navigate') {
         return caches.match('/index.html');
       }
@@ -82,41 +76,61 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push notification handler (scaffold for future use)
+// ============================================================
+// PUSH NOTIFICATIONS
+// ============================================================
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Tekton Fitness';
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: 'New Notification', body: event.data?.text() || 'You have a new notification' };
+  }
+
+  const title = data.title || 'Forge Fitness';
   const options = {
     body: data.body || 'You have a new notification',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-96.png',
     vibrate: [100, 50, 100],
+    tag: data.tag || 'default',
+    renotify: true,
     data: {
       url: data.url || '/',
+      type: data.type || 'general',
     },
     actions: data.actions || [],
   };
+
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Notification click handler
+// Notification click: open app to the right screen
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification.data?.url || '/';
+
   event.waitUntil(
-    self.clients.matchAll({ type: 'window' }).then((clients) => {
-      // Focus existing window or open new one
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // Try to focus an existing window
       for (const client of clients) {
-        if (client.url.includes(url) && 'focus' in client) {
-          return client.focus();
+        if ('focus' in client) {
+          client.focus();
+          client.postMessage({
+            type: 'NOTIFICATION_CLICK',
+            url: url,
+            notificationType: event.notification.data?.type,
+          });
+          return;
         }
       }
+      // No existing window — open a new one
       return self.clients.openWindow(url);
     })
   );
 });
 
-// Background sync (scaffold for offline result posting)
+// Background sync
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-results') {
     event.waitUntil(syncPendingResults());
@@ -124,6 +138,5 @@ self.addEventListener('sync', (event) => {
 });
 
 async function syncPendingResults() {
-  // In production: read from IndexedDB and POST to Supabase
   console.log('[SW] Background sync: would push pending results to server');
 }
