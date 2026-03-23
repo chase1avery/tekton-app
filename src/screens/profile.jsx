@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { GYM_CONFIG, THEME, S, I, services, supabase, useAuth, useAnnouncements, AnnouncementBanner, FlameStreak, SettingsContext, AnnouncementContext, membersCache, setMembersCache, calcStreak, streakCache, setStreakCache, getStreak, getWeekDates, fmt, fmtLong, fmtTime, today, autoResize, WEIGHT_LEVELS, MOVEMENT_LIBRARY, darkenHex, lightenHex, subtleHex, applyGymSettings, renderWithLinks } from '../config/shared';
+import { NavContext } from '../App';
 
 const ProfileScreen = () => {
   const { user, login, logout } = useAuth();
+  const { openNutrition, openMessages } = useContext(NavContext);
   const [editing, setEditing] = useState(false);
   const ec = user.emergencyContact || {};
   const [form, setForm] = useState({
@@ -138,6 +140,26 @@ const ProfileScreen = () => {
           </div>
         );
       })()}
+
+      {/* Quick Actions */}
+      <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:0}}>
+        <button onClick={openNutrition} style={{
+          flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
+          padding:"14px",borderRadius:THEME.radius.lg,border:`1px solid ${THEME.colors.border}`,
+          background:THEME.colors.surface,cursor:"pointer",
+        }}>
+          <span style={{fontSize:"18px"}}>🥗</span>
+          <span style={{fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"1.5px",color:THEME.colors.primary}}>Nutrition</span>
+        </button>
+        <button onClick={openMessages} style={{
+          flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
+          padding:"14px",borderRadius:THEME.radius.lg,border:`1px solid ${THEME.colors.border}`,
+          background:THEME.colors.surface,cursor:"pointer",
+        }}>
+          <span style={{fontSize:"18px"}}>💬</span>
+          <span style={{fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"1.5px",color:THEME.colors.primary}}>Messages</span>
+        </button>
+      </div>
 
       {/* Edit Mode */}
       {editing && (

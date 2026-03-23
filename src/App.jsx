@@ -1,8 +1,8 @@
 // ============================================================
 // FORGE — CrossFit Gym Management PWA
-// App Shell — Routes, Auth, Settings, Announcements, Messages
+// App Shell — Routes, Auth, Settings, Announcements, Messages, Nutrition
 // ============================================================
-import { useState, useEffect, useCallback, useContext } from "react";
+import { useState, useEffect, useCallback, useContext, createContext } from "react";
 import {
   GYM_CONFIG, THEME, S, I, services, supabase,
   AuthContext, SettingsContext, AnnouncementContext,
@@ -19,6 +19,10 @@ import RecordsScreen from "./screens/records";
 import CommunityScreen from "./screens/community";
 import AdminScreen from "./screens/admin";
 import MessagesScreen from "./screens/messages";
+import NutritionScreen from "./screens/nutrition";
+
+// Navigation context — lets any screen open Messages or Nutrition
+export const NavContext = createContext({ openMessages: () => {}, openNutrition: () => {} });
 
 // Chat Icon
 const ChatIcon = ({ size = 20, color }) => (
@@ -59,7 +63,7 @@ const MainApp = () => {
   const { user, logout } = useContext(AuthContext);
   const settingsCtx = useContext(SettingsContext);
   const [tab, setTab] = useState("home");
-  const [showMessages, setShowMessages] = useState(false);
+  const [overlay, setOverlay] = useState(null); // null | "messages" | "nutrition"
   const [, forceUpdate] = useState(0);
   const [announcements, setAnnouncements] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -88,45 +92,65 @@ const MainApp = () => {
   useEffect(() => { forceUpdate(v => v + 1); }, [settingsCtx.version]);
   useEffect(() => { loadAnnouncements(); loadUnreadCount(); }, [loadAnnouncements, loadUnreadCount]);
 
-  // Realtime unread badge
   useEffect(() => {
     const channel = supabase.channel('unread-badge').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => { loadUnreadCount(); }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [loadUnreadCount]);
 
-  if (showMessages) {
+  const closeOverlay = () => { setOverlay(null); loadUnreadCount(); };
+  const switchTab = (t) => { setOverlay(null); setTab(t); };
+
+  const navValue = { openMessages: () => setOverlay("messages"), openNutrition: () => setOverlay("nutrition") };
+
+  // Overlay screens
+  if (overlay === "messages") {
     return (
-      <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
-        <MessagesScreen onBack={() => { setShowMessages(false); loadUnreadCount(); }} />
-        <TabBar active={tab} setActive={(t) => { setShowMessages(false); setTab(t); }} isStaff={isStaff} />
-      </AnnouncementContext.Provider>
+      <NavContext.Provider value={navValue}>
+        <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
+          <MessagesScreen onBack={closeOverlay} />
+          <TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
+        </AnnouncementContext.Provider>
+      </NavContext.Provider>
+    );
+  }
+
+  if (overlay === "nutrition") {
+    return (
+      <NavContext.Provider value={navValue}>
+        <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
+          <NutritionScreen onBack={closeOverlay} />
+          <TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
+        </AnnouncementContext.Provider>
+      </NavContext.Provider>
     );
   }
 
   return (
-    <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: `14px ${THEME.spacing.md} 0`, position: "sticky", top: 0, zIndex: 50, background: THEME.colors.bg }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {GYM_CONFIG.logoUrl ? (
-            <img src={GYM_CONFIG.logoUrl} alt="" style={{ width: "32px", height: "32px", borderRadius: "8px", objectFit: "contain" }} />
-          ) : (
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: `linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontFamily: THEME.fonts.display, color: THEME.colors.white, fontWeight: "700" }}>{GYM_CONFIG.shortName.charAt(0)}</div>
-          )}
-          <span style={{ fontFamily: THEME.fonts.display, fontSize: "16px", color: THEME.colors.primary, letterSpacing: "3px" }}>{GYM_CONFIG.shortName}</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <button onClick={() => setShowMessages(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: "8px", position: "relative" }}>
-            <ChatIcon size={20} color={THEME.colors.textMuted} />
-            {unreadCount > 0 && (
-              <div style={{ position: "absolute", top: "2px", right: "2px", minWidth: "16px", height: "16px", borderRadius: "8px", background: THEME.colors.error, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: THEME.fonts.display, fontSize: "9px", color: THEME.colors.white, padding: "0 4px", border: `2px solid ${THEME.colors.bg}` }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+    <NavContext.Provider value={navValue}>
+      <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: `14px ${THEME.spacing.md} 0`, position: "sticky", top: 0, zIndex: 50, background: THEME.colors.bg }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {GYM_CONFIG.logoUrl ? (
+              <img src={GYM_CONFIG.logoUrl} alt="" style={{ width: "32px", height: "32px", borderRadius: "8px", objectFit: "contain" }} />
+            ) : (
+              <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: `linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontFamily: THEME.fonts.display, color: THEME.colors.white, fontWeight: "700" }}>{GYM_CONFIG.shortName.charAt(0)}</div>
             )}
-          </button>
-          <button onClick={logout} style={{ background: "none", border: "none", cursor: "pointer", padding: "8px" }}><I.out size={18} color={THEME.colors.textMuted} /></button>
+            <span style={{ fontFamily: THEME.fonts.display, fontSize: "16px", color: THEME.colors.primary, letterSpacing: "3px" }}>{GYM_CONFIG.shortName}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <button onClick={() => setOverlay("messages")} style={{ background: "none", border: "none", cursor: "pointer", padding: "8px", position: "relative" }}>
+              <ChatIcon size={20} color={THEME.colors.textMuted} />
+              {unreadCount > 0 && (
+                <div style={{ position: "absolute", top: "2px", right: "2px", minWidth: "16px", height: "16px", borderRadius: "8px", background: THEME.colors.error, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: THEME.fonts.display, fontSize: "9px", color: THEME.colors.white, padding: "0 4px", border: `2px solid ${THEME.colors.bg}` }}>{unreadCount > 9 ? "9+" : unreadCount}</div>
+              )}
+            </button>
+            <button onClick={logout} style={{ background: "none", border: "none", cursor: "pointer", padding: "8px" }}><I.out size={18} color={THEME.colors.textMuted} /></button>
+          </div>
         </div>
-      </div>
-      <Sc />
-      <TabBar active={tab} setActive={setTab} isStaff={isStaff} />
-    </AnnouncementContext.Provider>
+        <Sc />
+        <TabBar active={tab} setActive={setTab} isStaff={isStaff} />
+      </AnnouncementContext.Provider>
+    </NavContext.Provider>
   );
 };
 
