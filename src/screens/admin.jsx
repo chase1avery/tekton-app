@@ -1,15 +1,6 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { GYM_CONFIG, THEME, S, I, services, supabase, useAuth, useAnnouncements, AnnouncementBanner, FlameStreak, SettingsContext, AnnouncementContext, membersCache, setMembersCache, calcStreak, streakCache, setStreakCache, getStreak, getWeekDates, fmt, fmtLong, fmtTime, today, autoResize, WEIGHT_LEVELS, MOVEMENT_LIBRARY, darkenHex, lightenHex, subtleHex, applyGymSettings, renderWithLinks } from '../config/shared';
 
-const MOVEMENT_LIBRARY = [
-  "Thrusters","Pull-ups","Deadlifts","Clean & Jerk","Snatch","Back Squat","Front Squat",
-  "Overhead Squat","Bench Press","Strict Press","Push Press","Push Jerk","Wall Balls",
-  "Box Jumps","Burpees","Toes-to-Bar","Muscle-ups","HSPU","Rowing","Bike Erg",
-  "Ski Erg","Double Unders","Pistols","Lunges","Kettlebell Swings","Turkish Get-ups",
-  "Ring Dips","Rope Climbs","GHD Sit-ups","Hang Power Cleans","Power Cleans",
-  "Sumo Deadlift High Pull","Bar Muscle-ups","Chest-to-Bar Pull-ups",
-];
-
 const AdminScreen = () => {
   const { user } = useAuth();
   const settingsCtx = useContext(SettingsContext);
