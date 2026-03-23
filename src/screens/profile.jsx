@@ -121,7 +121,7 @@ const ProfileScreen = () => {
       {(() => {
         const streak = getStreak(user.id);
         return (
-          <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:0}}>
+          <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
             <div style={{...S.statBox,display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
               <div style={{display:"flex",alignItems:"center",gap:"4px"}}>
                 {streak.current > 0 && <FlameStreak count={streak.current} size="md" />}
