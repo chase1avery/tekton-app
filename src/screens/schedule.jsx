@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { GYM_CONFIG, THEME, S, I, services, supabase, useAuth, useAnnouncements, AnnouncementBanner, FlameStreak, SettingsContext, AnnouncementContext, membersCache, setMembersCache, calcStreak, streakCache, setStreakCache, getStreak, getWeekDates, fmt, fmtLong, fmtTime, today, autoResize, WEIGHT_LEVELS, MOVEMENT_LIBRARY, darkenHex, lightenHex, subtleHex, applyGymSettings, renderWithLinks } from '../config/shared';
+import { VideoModal, useVideoLibrary, MovementName } from '../components/VideoModal';
 
 const ScheduleScreen = () => {
   const { user } = useAuth();
@@ -9,7 +10,9 @@ const ScheduleScreen = () => {
   const [allSessions, setAllSessions] = useState([]);
   const [allWorkouts, setAllWorkouts] = useState([]);
   const [actioningId, setActioningId] = useState(null);
-  const [viewingWod, setViewingWod] = useState(null); // null = schedule list, object = WOD detail
+  const [viewingWod, setViewingWod] = useState(null);
+  const { getVideoUrl } = useVideoLibrary();
+  const [playingVideo, setPlayingVideo] = useState(null);
 
   const weekDates = getWeekDates(weekStart);
 
@@ -138,7 +141,7 @@ const ScheduleScreen = () => {
                     fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.textMuted,flexShrink:0,
                   }}>{i + 1}</div>
                   <div>
-                    <div style={{fontWeight:"600",fontSize:"15px"}}>{m.name}</div>
+                    <MovementName name={m.name} videoUrl={getVideoUrl(m.name)} onPlay={(n,u)=>setPlayingVideo({name:n,url:u})} />
                     {m.notes && <div style={{color:THEME.colors.textMuted,fontSize:"11px",marginTop:"2px"}}>{m.notes}</div>}
                   </div>
                 </div>
@@ -387,6 +390,11 @@ const ScheduleScreen = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* Video Playback Modal */}
+      {playingVideo && (
+        <VideoModal movement={playingVideo.name} videoUrl={playingVideo.url} onClose={()=>setPlayingVideo(null)} />
       )}
     </div>
   );

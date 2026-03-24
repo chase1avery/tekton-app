@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { GYM_CONFIG, THEME, S, I, services, supabase, useAuth, useAnnouncements, AnnouncementBanner, FlameStreak, SettingsContext, AnnouncementContext, membersCache, setMembersCache, calcStreak, streakCache, setStreakCache, getStreak, getWeekDates, fmt, fmtLong, fmtTime, today, autoResize, WEIGHT_LEVELS, MOVEMENT_LIBRARY, darkenHex, lightenHex, subtleHex, applyGymSettings, renderWithLinks } from '../config/shared';
+import { VideoModal, MovementName } from '../components/VideoModal';
 
 
 const AdminScreen = () => {
@@ -45,6 +46,34 @@ const AdminScreen = () => {
   const [announcementDays, setAnnouncementDays] = useState("3");
   const [announcementPosting, setAnnouncementPosting] = useState(false);
   const [activeAnnouncements, setActiveAnnouncements] = useState([]);
+
+  // Video Library
+  const [videoLibrary, setVideoLibrary] = useState({}); // { movementName: url }
+  const [videoSearch, setVideoSearch] = useState("");
+  const [editingVideo, setEditingVideo] = useState(null); // movement name being edited
+  const [editVideoUrl, setEditVideoUrl] = useState("");
+  const [videoSaving, setVideoSaving] = useState(false);
+  const [playingVideo, setPlayingVideo] = useState(null); // { name, url }
+
+  const loadVideoLibrary = useCallback(async () => {
+    const { data } = await supabase.from('movement_videos').select('*').eq('gym_id', GYM_CONFIG.id);
+    const map = {};
+    (data || []).forEach(v => { map[v.movement_name] = v.video_url; });
+    setVideoLibrary(map);
+  }, []);
+
+  const saveVideoUrl = async (movementName) => {
+    if (!editVideoUrl.trim()) {
+      // Delete
+      await supabase.from('movement_videos').delete().eq('gym_id', GYM_CONFIG.id).eq('movement_name', movementName);
+    } else {
+      await supabase.from('movement_videos').upsert({
+        gym_id: GYM_CONFIG.id, movement_name: movementName, video_url: editVideoUrl.trim(),
+      }, { onConflict: 'gym_id,movement_name' });
+    }
+    setEditingVideo(null); setEditVideoUrl("");
+    await loadVideoLibrary();
+  };
 
   const loadAnnouncements = useCallback(async () => {
     const active = await services.announcements.getActive();
@@ -104,7 +133,7 @@ const AdminScreen = () => {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); loadAnnouncements(); }, [load, loadAnnouncements]);
+  useEffect(() => { load(); loadAnnouncements(); loadVideoLibrary(); }, [load, loadAnnouncements, loadVideoLibrary]);
 
   const coaches = members.filter(m => m.role === "coach" || m.role === "admin");
   const coachName = (id) => { const m = members.find(x => x.id === id); return m ? m.firstName : "?"; };
@@ -312,6 +341,7 @@ const AdminScreen = () => {
         <TabBtn id="users" label="Users" />
         <TabBtn id="roster" label="Roster" />
         <TabBtn id="wod" label="Program" />
+        <TabBtn id="videos" label="Videos" />
         <TabBtn id="schedule" label="Schedule" />
         {user.role === "admin" && <TabBtn id="settings" label="Settings" />}
       </div>
@@ -942,6 +972,95 @@ const AdminScreen = () => {
             });
           })()}
         </>
+      )}
+
+      {/* ===== VIDEO LIBRARY ===== */}
+      {tab === "videos" && (
+        <>
+          <div style={{marginBottom:THEME.spacing.md}}>
+            <input style={{...S.inp,padding:"10px 14px",fontSize:"14px"}} value={videoSearch} onChange={e=>setVideoSearch(e.target.value)}
+              placeholder="🔍 Search movements..."
+              onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+          </div>
+
+          <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+            <div style={S.statBox}>
+              <div style={{...S.statVal,fontSize:"20px",color:THEME.colors.primary}}>{Object.keys(videoLibrary).length}</div>
+              <div style={S.statLbl}>Videos Added</div>
+            </div>
+            <div style={S.statBox}>
+              <div style={{...S.statVal,fontSize:"20px",color:THEME.colors.textMuted}}>{MOVEMENT_LIBRARY.length - Object.keys(videoLibrary).length}</div>
+              <div style={S.statLbl}>Without Video</div>
+            </div>
+          </div>
+
+          {MOVEMENT_LIBRARY
+            .filter(m => !videoSearch || m.toLowerCase().includes(videoSearch.toLowerCase()))
+            .map(movName => {
+              const hasVideo = !!videoLibrary[movName];
+              const isEditing = editingVideo === movName;
+              return (
+                <div key={movName} style={{
+                  ...S.card, padding:THEME.spacing.md, marginBottom:"6px",
+                  borderLeft: `3px solid ${hasVideo ? THEME.colors.primary : THEME.colors.border}`,
+                }}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,flex:1}}>
+                      {hasVideo && <span style={{fontSize:"14px",color:THEME.colors.primary}}>▶</span>}
+                      {!hasVideo && <span style={{fontSize:"14px",color:THEME.colors.textMuted}}>○</span>}
+                      <span style={{fontWeight:"600",fontSize:"14px"}}>{movName}</span>
+                    </div>
+                    <div style={{display:"flex",gap:"4px"}}>
+                      {hasVideo && (
+                        <button onClick={()=>setPlayingVideo({name:movName,url:videoLibrary[movName]})} style={{
+                          padding:"6px 10px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                          background:THEME.colors.primarySubtle,color:THEME.colors.primary,
+                          fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                        }}>Watch</button>
+                      )}
+                      <button onClick={()=>{setEditingVideo(isEditing?null:movName);setEditVideoUrl(videoLibrary[movName]||"");}} style={{
+                        padding:"6px 10px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                        background:THEME.colors.surfaceLight,color:THEME.colors.textMuted,
+                        fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                      }}>{isEditing ? "Cancel" : hasVideo ? "Edit" : "Add"}</button>
+                    </div>
+                  </div>
+
+                  {isEditing && (
+                    <div style={{marginTop:THEME.spacing.sm,display:"flex",gap:THEME.spacing.sm}}>
+                      <input style={{...S.inp,flex:1,padding:"10px 12px",fontSize:"13px"}}
+                        value={editVideoUrl} onChange={e=>setEditVideoUrl(e.target.value)}
+                        placeholder="Paste YouTube URL..."
+                        onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                      <button onClick={()=>saveVideoUrl(movName)} style={{
+                        padding:"10px 16px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                        background:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
+                        color:THEME.colors.white,fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1px",flexShrink:0,
+                      }}>Save</button>
+                      {hasVideo && (
+                        <button onClick={async()=>{setEditVideoUrl("");await saveVideoUrl(movName);}} style={{
+                          padding:"10px 12px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                          background:"rgba(231,76,60,0.12)",color:THEME.colors.error,
+                          fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1px",flexShrink:0,
+                        }}>Remove</button>
+                      )}
+                    </div>
+                  )}
+
+                  {hasVideo && !isEditing && (
+                    <div style={{marginTop:"4px",fontSize:"11px",color:THEME.colors.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {videoLibrary[movName]}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </>
+      )}
+
+      {/* Video Playback Modal */}
+      {playingVideo && (
+        <VideoModal movement={playingVideo.name} videoUrl={playingVideo.url} onClose={()=>setPlayingVideo(null)} />
       )}
 
       {/* ===== SCHEDULE BUILDER ===== */}
