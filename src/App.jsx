@@ -20,9 +20,10 @@ import CommunityScreen from "./screens/community";
 import AdminScreen from "./screens/admin";
 import MessagesScreen from "./screens/messages";
 import NutritionScreen from "./screens/nutrition";
+import AnalyticsScreen from "./screens/analytics";
 
-// Navigation context — lets any screen open Messages or Nutrition
-export const NavContext = createContext({ openMessages: () => {}, openNutrition: () => {} });
+// Navigation context — lets any screen open Messages, Nutrition, or Analytics
+export const NavContext = createContext({ openMessages: () => {}, openNutrition: () => {}, openAnalytics: () => {} });
 
 // Chat Icon
 const ChatIcon = ({ size = 20, color }) => (
@@ -100,7 +101,7 @@ const MainApp = () => {
   const closeOverlay = () => { setOverlay(null); loadUnreadCount(); };
   const switchTab = (t) => { setOverlay(null); setTab(t); };
 
-  const navValue = { openMessages: () => setOverlay("messages"), openNutrition: () => setOverlay("nutrition") };
+  const navValue = { openMessages: () => setOverlay("messages"), openNutrition: () => setOverlay("nutrition"), openAnalytics: () => setOverlay("analytics") };
 
   // Overlay screens
   if (overlay === "messages") {
@@ -119,6 +120,17 @@ const MainApp = () => {
       <NavContext.Provider value={navValue}>
         <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
           <NutritionScreen onBack={closeOverlay} />
+          <TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
+        </AnnouncementContext.Provider>
+      </NavContext.Provider>
+    );
+  }
+
+  if (overlay === "analytics") {
+    return (
+      <NavContext.Provider value={navValue}>
+        <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
+          <AnalyticsScreen onBack={closeOverlay} />
           <TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
         </AnnouncementContext.Provider>
       </NavContext.Provider>

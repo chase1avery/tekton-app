@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { GYM_CONFIG, THEME, S, I, services, supabase, useAuth, useAnnouncements, AnnouncementBanner, FlameStreak, SettingsContext, AnnouncementContext, membersCache, setMembersCache, calcStreak, streakCache, setStreakCache, getStreak, getWeekDates, fmt, fmtLong, fmtTime, today, autoResize, WEIGHT_LEVELS, MOVEMENT_LIBRARY, darkenHex, lightenHex, subtleHex, applyGymSettings, renderWithLinks } from '../config/shared';
 import { NavContext } from '../App';
+import { NotificationToggle } from '../components/NotificationOptIn';
 
 const ProfileScreen = () => {
   const { user, login, logout } = useAuth();
-  const { openNutrition, openMessages } = useContext(NavContext);
+  const { openNutrition, openMessages, openAnalytics } = useContext(NavContext);
   const [editing, setEditing] = useState(false);
   const ec = user.emergencyContact || {};
   const [form, setForm] = useState({
@@ -144,20 +145,28 @@ const ProfileScreen = () => {
       {/* Quick Actions */}
       <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.lg}}>
         <button onClick={openNutrition} style={{
-          flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
-          padding:"14px",borderRadius:THEME.radius.lg,border:"1px solid rgba(243, 156, 18, 0.25)",
+          flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"6px",
+          padding:"14px 8px",borderRadius:THEME.radius.lg,border:"1px solid rgba(243, 156, 18, 0.25)",
           background:"rgba(243, 156, 18, 0.20)",cursor:"pointer",
         }}>
           <span style={{fontSize:"18px"}}>🥗</span>
-          <span style={{fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"1.5px",color:"#F39C12"}}>Nutrition</span>
+          <span style={{fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1.5px",color:"#F39C12"}}>Nutrition</span>
         </button>
         <button onClick={openMessages} style={{
-          flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
-          padding:"14px",borderRadius:THEME.radius.lg,border:"1px solid rgba(45, 140, 78, 0.25)",
+          flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"6px",
+          padding:"14px 8px",borderRadius:THEME.radius.lg,border:"1px solid rgba(45, 140, 78, 0.25)",
           background:"rgba(45, 140, 78, 0.20)",cursor:"pointer",
         }}>
           <span style={{fontSize:"18px"}}>💬</span>
-          <span style={{fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"1.5px",color:THEME.colors.primary}}>Messages</span>
+          <span style={{fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1.5px",color:THEME.colors.primary}}>Messages</span>
+        </button>
+        <button onClick={openAnalytics} style={{
+          flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"6px",
+          padding:"14px 8px",borderRadius:THEME.radius.lg,border:"1px solid rgba(52, 152, 219, 0.25)",
+          background:"rgba(52, 152, 219, 0.20)",cursor:"pointer",
+        }}>
+          <span style={{fontSize:"18px"}}>📊</span>
+          <span style={{fontFamily:THEME.fonts.display,fontSize:"11px",letterSpacing:"1.5px",color:"#3498DB"}}>Analytics</span>
         </button>
       </div>
 
@@ -220,6 +229,9 @@ const ProfileScreen = () => {
           })()}
         </div>
       )}
+
+      {/* Notifications */}
+      <NotificationToggle />
 
       {/* Membership */}
       <div style={{...S.card,borderLeft:`3px solid ${user.membershipStatus==="active"?THEME.colors.primary:THEME.colors.warning}`}}>
