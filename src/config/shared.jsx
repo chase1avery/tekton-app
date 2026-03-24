@@ -265,6 +265,7 @@ export const globalCSS = (THEME) => `
     75% { transform: scale(1.05) rotate(2deg); }
   }
   .flame-anim { animation: flameFlicker 0.8s ease-in-out infinite; display: inline-block; }
+  @keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
   input,textarea{transition:border-color 0.2s ease,box-shadow 0.2s ease;}
   input:focus,textarea:focus{border-color:${THEME.colors.primary} !important;box-shadow:0 0 0 3px ${THEME.colors.primarySubtle};}
   textarea{font-family:${THEME.fonts.body},'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;}

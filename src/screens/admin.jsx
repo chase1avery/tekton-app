@@ -6,7 +6,8 @@ import { VideoModal, MovementName } from '../components/VideoModal';
 const AdminScreen = () => {
   const { user } = useAuth();
   const settingsCtx = useContext(SettingsContext);
-  const [tab, setTab] = useState("overview"); // overview | users | roster | wod | schedule | settings
+  const [tab, setTab] = useState("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [members, setMembers] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [workouts, setWorkouts] = useState([]);
@@ -294,15 +295,19 @@ const AdminScreen = () => {
     ? MOVEMENT_LIBRARY.filter(m => m.toLowerCase().includes(movSearch.toLowerCase()))
     : [];
 
-  const TabBtn = ({ id, label }) => (
-    <button onClick={() => setTab(id)} style={{
-      padding: "8px 4px", borderRadius: THEME.radius.md, border: "none", cursor: "pointer",
-      background: tab === id ? THEME.colors.primary : THEME.colors.surfaceLight,
-      color: tab === id ? THEME.colors.white : THEME.colors.textSecondary,
-      fontFamily: THEME.fonts.display, fontSize: "12px", letterSpacing: "1px",
-      flex: 1,
-    }}>{label}</button>
-  );
+  const adminTabs = [
+    { section: "Dashboard" },
+    { id: "overview", label: "Overview", icon: "📊" },
+    { id: "users", label: "Users", icon: "👥" },
+    { id: "roster", label: "Roster", icon: "📋" },
+    { section: "Content" },
+    { id: "wod", label: "Program", icon: "🏋️" },
+    { id: "videos", label: "Videos", icon: "🎬" },
+    { id: "schedule", label: "Schedule", icon: "📅" },
+    ...(user.role === "admin" ? [{ section: "System" }, { id: "settings", label: "Settings", icon: "⚙️" }] : []),
+  ];
+
+  const selectTab = (id) => { setTab(id); setSidebarOpen(false); };
 
   return (
     <div style={S.screen}>
@@ -334,17 +339,81 @@ const AdminScreen = () => {
       })()}
 
       {!adminViewWod && (<>
-      <div style={{fontFamily:THEME.fonts.display,fontSize:"28px",letterSpacing:"1px",marginBottom:THEME.spacing.lg}}>Admin</div>
-
-      <div style={{display:"flex",gap:"5px",marginBottom:THEME.spacing.lg,flexWrap:"wrap"}}>
-        <TabBtn id="overview" label="Overview" />
-        <TabBtn id="users" label="Users" />
-        <TabBtn id="roster" label="Roster" />
-        <TabBtn id="wod" label="Program" />
-        <TabBtn id="videos" label="Videos" />
-        <TabBtn id="schedule" label="Schedule" />
-        {user.role === "admin" && <TabBtn id="settings" label="Settings" />}
+      {/* Admin Header with Hamburger */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:THEME.spacing.lg}}>
+        <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+          <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"flex",flexDirection:"column",gap:"4px"}}>
+            <div style={{width:"20px",height:"2px",background:THEME.colors.text,borderRadius:"1px"}} />
+            <div style={{width:"16px",height:"2px",background:THEME.colors.text,borderRadius:"1px"}} />
+            <div style={{width:"20px",height:"2px",background:THEME.colors.text,borderRadius:"1px"}} />
+          </button>
+          <div style={{fontFamily:THEME.fonts.display,fontSize:"28px",letterSpacing:"1px"}}>Admin</div>
+        </div>
+        <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"10px",padding:"4px 10px"}}>
+          {adminTabs.find(t=>t.id===tab)?.label || "Overview"}
+        </div>
       </div>
+
+      {/* Sidebar Overlay */}
+      {sidebarOpen && (
+        <>
+          <div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(3px)"}} />
+          <div style={{
+            position:"fixed",top:0,left:0,bottom:0,width:"280px",maxWidth:"80vw",
+            zIndex:9999,background:THEME.colors.surface,
+            borderRight:`1px solid ${THEME.colors.border}`,
+            display:"flex",flexDirection:"column",
+            animation:"slideIn 0.2s ease",
+          }}>
+            {/* Sidebar Header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"20px 20px 16px"}}>
+              <div style={{fontFamily:THEME.fonts.display,fontSize:"22px",letterSpacing:"2px",color:THEME.colors.primary}}>Admin</div>
+              <button onClick={()=>setSidebarOpen(false)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px"}}>
+                <I.x size={20} color={THEME.colors.textMuted} />
+              </button>
+            </div>
+
+            {/* Sidebar Items */}
+            <div style={{flex:1,overflowY:"auto",padding:"0 12px"}}>
+              {adminTabs.map((item, idx) => {
+                if (item.section) {
+                  return (
+                    <div key={`section-${idx}`} style={{
+                      fontFamily:THEME.fonts.display,fontSize:"10px",letterSpacing:"2px",
+                      color:THEME.colors.textMuted,padding:"16px 8px 6px",
+                      borderTop:idx>0?`1px solid ${THEME.colors.border}`:"none",
+                      marginTop:idx>0?"8px":"0",
+                    }}>{item.section}</div>
+                  );
+                }
+                const active = tab === item.id;
+                return (
+                  <button key={item.id} onClick={()=>selectTab(item.id)} style={{
+                    display:"flex",alignItems:"center",gap:"12px",width:"100%",
+                    padding:"12px 12px",marginBottom:"2px",borderRadius:THEME.radius.md,
+                    border:"none",cursor:"pointer",textAlign:"left",
+                    background:active?THEME.colors.primarySubtle:"transparent",
+                    transition:"background 0.15s",
+                  }}>
+                    <span style={{fontSize:"18px",width:"24px",textAlign:"center"}}>{item.icon}</span>
+                    <span style={{
+                      fontFamily:THEME.fonts.display,fontSize:"15px",letterSpacing:"1px",
+                      color:active?THEME.colors.primary:THEME.colors.text,
+                      fontWeight:active?"700":"400",
+                    }}>{item.label}</span>
+                    {active && <div style={{marginLeft:"auto",width:"4px",height:"4px",borderRadius:"50%",background:THEME.colors.primary}} />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sidebar Footer */}
+            <div style={{padding:"16px 20px",borderTop:`1px solid ${THEME.colors.border}`,fontSize:"11px",color:THEME.colors.textMuted}}>
+              {GYM_CONFIG.name}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ===== OVERVIEW ===== */}
       {tab === "overview" && (
