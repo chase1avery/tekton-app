@@ -13,6 +13,7 @@ const ScheduleScreen = () => {
   const [viewingWod, setViewingWod] = useState(null);
   const { getVideoUrl } = useVideoLibrary();
   const [playingVideo, setPlayingVideo] = useState(null);
+  const [waitlists, setWaitlists] = useState({}); // { sessionId: [{ memberId, position }] }
 
   const weekDates = getWeekDates(weekStart);
 
@@ -23,7 +24,14 @@ const ScheduleScreen = () => {
     ]);
     setAllSessions(all);
     setAllWorkouts(wods);
-    setSessions(all.filter(s => s.date === selectedDate));
+    const daySessions = all.filter(s => s.date === selectedDate);
+    setSessions(daySessions);
+    // Load waitlists for visible sessions
+    const wlMap = {};
+    await Promise.all(daySessions.map(async (s) => {
+      wlMap[s.id] = await services.waitlist.getForSession(s.id);
+    }));
+    setWaitlists(wlMap);
   }, [selectedDate]);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
@@ -42,6 +50,24 @@ const ScheduleScreen = () => {
     const s = allSessions.find(x => x.id === sessionId);
     if (!s) { setActioningId(null); return; }
     await services.sessions.cancel(sessionId, user.id);
+    // Auto-promote first person on waitlist if class was full
+    if (s.signups.length >= s.capacity) {
+      await services.waitlist.promoteFirst(sessionId);
+    }
+    await loadSessions();
+    setActioningId(null);
+  };
+
+  const handleJoinWaitlist = async (sessionId) => {
+    setActioningId(sessionId);
+    await services.waitlist.join(sessionId, user.id);
+    await loadSessions();
+    setActioningId(null);
+  };
+
+  const handleLeaveWaitlist = async (sessionId) => {
+    setActioningId(sessionId);
+    await services.waitlist.leave(sessionId, user.id);
     await loadSessions();
     setActioningId(null);
   };
@@ -276,11 +302,14 @@ const ScheduleScreen = () => {
         const actioning = actioningId === s.id;
         const spotsLeft = s.capacity - s.signups.length;
         const sessionWod = s.workoutId ? allWorkouts.find(w => w.id === s.workoutId) : getWodForDate(s.date);
+        const wl = waitlists[s.id] || [];
+        const onWaitlist = wl.find(w => w.memberId === user.id);
+        const myWaitlistPos = onWaitlist ? onWaitlist.position : null;
 
         return (
           <div key={s.id} style={{
             ...S.card,
-            borderLeft: `3px solid ${signedUp ? THEME.colors.primary : past ? THEME.colors.border : THEME.colors.surfaceLight}`,
+            borderLeft: `3px solid ${signedUp ? THEME.colors.primary : onWaitlist ? THEME.colors.warning : past ? THEME.colors.border : THEME.colors.surfaceLight}`,
             opacity: past ? 0.5 : 1,
             marginBottom: THEME.spacing.sm,
             padding: THEME.spacing.md,
@@ -290,6 +319,7 @@ const ScheduleScreen = () => {
                 <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:"4px"}}>
                   <span style={{fontFamily:THEME.fonts.display,fontSize:"18px"}}>{s.title}</span>
                   {signedUp && <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"9px"}}>Signed Up</div>}
+                  {onWaitlist && <div style={{...S.badge,background:"rgba(243,156,18,0.12)",color:THEME.colors.warning,fontSize:"9px"}}>Waitlist #{myWaitlistPos}</div>}
                 </div>
                 <div style={{color:THEME.colors.textSecondary,fontSize:"13px",display:"flex",alignItems:"center",gap:"12px"}}>
                   <span style={{display:"flex",alignItems:"center",gap:"4px"}}><I.clock size={13} color={THEME.colors.textMuted}/> {fmtTime(s.startTime)} – {fmtTime(s.endTime)}</span>
@@ -302,7 +332,7 @@ const ScheduleScreen = () => {
                   <span style={{color:THEME.colors.textMuted}}>/{s.capacity}</span>
                 </div>
                 <div style={{fontSize:"11px",color: full ? THEME.colors.error : THEME.colors.textMuted}}>
-                  {full ? "Full" : `${spotsLeft} spots`}
+                  {full ? (wl.length > 0 ? `${wl.length} waiting` : "Full") : `${spotsLeft} spots`}
                 </div>
               </div>
             </div>
@@ -340,15 +370,34 @@ const ScheduleScreen = () => {
                   }}>
                     <I.x size={14} color={THEME.colors.textSecondary}/> {actioning?"Cancelling...":"Cancel Reservation"}
                   </button>
-                ) : (
-                  <button onClick={()=>handleSignup(s.id)} disabled={actioning||full} style={{
-                    width:"100%",padding:"10px",borderRadius:THEME.radius.md,border:"none",
-                    background: full ? THEME.colors.surfaceLight : `linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
-                    color: full ? THEME.colors.textMuted : THEME.colors.white,
-                    fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"2px",cursor: full?"default":"pointer",
-                    opacity:actioning?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
+                ) : onWaitlist ? (
+                  <button onClick={()=>handleLeaveWaitlist(s.id)} disabled={actioning} style={{
+                    width:"100%",padding:"10px",borderRadius:THEME.radius.md,border:`1px solid rgba(243,156,18,0.3)`,
+                    background:"rgba(243,156,18,0.08)",color:THEME.colors.warning,fontFamily:THEME.fonts.display,
+                    fontSize:"13px",letterSpacing:"2px",cursor:"pointer",opacity:actioning?0.5:1,
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
                   }}>
-                    {full ? "Class Full" : actioning ? "Signing Up..." : <><I.check size={14} color={THEME.colors.white}/> Sign Up</>}
+                    <I.x size={14} color={THEME.colors.warning}/> {actioning?"Leaving...":"Leave Waitlist"}
+                  </button>
+                ) : full ? (
+                  <button onClick={()=>handleJoinWaitlist(s.id)} disabled={actioning} style={{
+                    width:"100%",padding:"10px",borderRadius:THEME.radius.md,border:"none",
+                    background:`linear-gradient(135deg,${THEME.colors.warning},${darkenHex(THEME.colors.warning)})`,
+                    color:THEME.colors.white,fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"2px",
+                    cursor:"pointer",opacity:actioning?0.5:1,
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
+                  }}>
+                    {actioning ? "Joining..." : <><I.clock size={14} color={THEME.colors.white}/> Join Waitlist {wl.length > 0 ? `(${wl.length} waiting)` : ""}</>}
+                  </button>
+                ) : (
+                  <button onClick={()=>handleSignup(s.id)} disabled={actioning} style={{
+                    width:"100%",padding:"10px",borderRadius:THEME.radius.md,border:"none",
+                    background:`linear-gradient(135deg,${THEME.colors.primary},${THEME.colors.primaryDark})`,
+                    color:THEME.colors.white,fontFamily:THEME.fonts.display,fontSize:"13px",letterSpacing:"2px",
+                    cursor:"pointer",opacity:actioning?0.5:1,
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
+                  }}>
+                    {actioning ? "Signing Up..." : <><I.check size={14} color={THEME.colors.white}/> Sign Up</>}
                   </button>
                 )}
               </div>

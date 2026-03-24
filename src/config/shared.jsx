@@ -133,6 +133,50 @@ export const services = {
     create: async (item) => { const { data } = await supabase.from('announcements').insert({ gym_id: item.gymId || GYM_CONFIG.id, message: item.message, created_by: item.createdBy, expires_at: item.expiresAt }).select().single(); return data; },
     delete: async (id) => { await supabase.from('announcements').delete().eq('id', id); return true; },
   },
+  waitlist: {
+    getForSession: async (sessionId) => {
+      const { data } = await supabase.from('session_waitlist').select('*').eq('session_id', sessionId).order('position');
+      return (data || []).map(w => ({ id: w.id, sessionId: w.session_id, memberId: w.member_id, position: w.position, joinedAt: w.joined_at }));
+    },
+    join: async (sessionId, memberId) => {
+      // Get next position
+      const { data: existing } = await supabase.from('session_waitlist').select('position').eq('session_id', sessionId).order('position', { ascending: false }).limit(1);
+      const nextPos = (existing && existing.length > 0) ? existing[0].position + 1 : 1;
+      await supabase.from('session_waitlist').insert({ session_id: sessionId, member_id: memberId, position: nextPos });
+    },
+    leave: async (sessionId, memberId) => {
+      await supabase.from('session_waitlist').delete().eq('session_id', sessionId).eq('member_id', memberId);
+      // Re-number positions
+      const { data: remaining } = await supabase.from('session_waitlist').select('*').eq('session_id', sessionId).order('position');
+      if (remaining) {
+        for (let i = 0; i < remaining.length; i++) {
+          if (remaining[i].position !== i + 1) {
+            await supabase.from('session_waitlist').update({ position: i + 1 }).eq('id', remaining[i].id);
+          }
+        }
+      }
+    },
+    promoteFirst: async (sessionId) => {
+      // Get first person on waitlist
+      const { data } = await supabase.from('session_waitlist').select('*').eq('session_id', sessionId).order('position').limit(1);
+      if (!data || data.length === 0) return null;
+      const first = data[0];
+      // Add them to session signups
+      await supabase.from('session_signups').insert({ session_id: sessionId, member_id: first.member_id });
+      // Remove from waitlist
+      await supabase.from('session_waitlist').delete().eq('id', first.id);
+      // Re-number remaining
+      const { data: remaining } = await supabase.from('session_waitlist').select('*').eq('session_id', sessionId).order('position');
+      if (remaining) {
+        for (let i = 0; i < remaining.length; i++) {
+          if (remaining[i].position !== i + 1) {
+            await supabase.from('session_waitlist').update({ position: i + 1 }).eq('id', remaining[i].id);
+          }
+        }
+      }
+      return first.member_id;
+    },
+  },
   auth: {
     login: async (email, password) => { const { data, error } = await supabase.auth.signInWithPassword({ email, password }); if (error) throw new Error(error.message); const { data: member } = await supabase.from('members').select('*').eq('auth_id', data.user.id).single(); if (!member) throw new Error("Member profile not found"); return mapMember(member); },
     signup: async ({ email, password, firstName, lastName }) => { const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { first_name: firstName, last_name: lastName } } }); if (error) throw new Error(error.message); await new Promise(r => setTimeout(r, 500)); const { data: member } = await supabase.from('members').select('*').eq('auth_id', data.user.id).single(); return mapMember(member); },
