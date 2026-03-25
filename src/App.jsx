@@ -1,6 +1,6 @@
 // ============================================================
 // FORGE — CrossFit Gym Management PWA
-// App Shell — Routes, Auth, Settings, Announcements, Messages, Nutrition
+// App Shell — Routes, Auth, Settings, Announcements, Messages, Nutrition, Activation
 // ============================================================
 import { useState, useEffect, useCallback, useContext, createContext } from "react";
 import {
@@ -12,6 +12,7 @@ import {
 
 import LoginScreen from "./screens/login";
 import SignupScreen from "./screens/signup";
+import ActivateScreen from "./screens/activate";
 import DashboardScreen from "./screens/dashboard";
 import ScheduleScreen from "./screens/schedule";
 import ProfileScreen from "./screens/profile";
@@ -22,7 +23,7 @@ import MessagesScreen from "./screens/messages";
 import NutritionScreen from "./screens/nutrition";
 import AnalyticsScreen from "./screens/analytics";
 
-// Navigation context — lets any screen open Messages, Nutrition, or Analytics
+// Navigation context
 export const NavContext = createContext({ openMessages: () => {}, openNutrition: () => {}, openAnalytics: () => {} });
 
 // Chat Icon
@@ -31,6 +32,18 @@ const ChatIcon = ({ size = 20, color }) => (
     <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
   </svg>
 );
+
+// Check URL for activation token
+const getActivationToken = () => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("token");
+};
+
+const clearActivationToken = () => {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("token");
+  window.history.replaceState({}, "", url.pathname);
+};
 
 // ============================================================
 // TAB BAR
@@ -64,7 +77,7 @@ const MainApp = () => {
   const { user, logout } = useContext(AuthContext);
   const settingsCtx = useContext(SettingsContext);
   const [tab, setTab] = useState("home");
-  const [overlay, setOverlay] = useState(null); // null | "messages" | "nutrition"
+  const [overlay, setOverlay] = useState(null);
   const [, forceUpdate] = useState(0);
   const [announcements, setAnnouncements] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -100,41 +113,22 @@ const MainApp = () => {
 
   const closeOverlay = () => { setOverlay(null); loadUnreadCount(); };
   const switchTab = (t) => { setOverlay(null); setTab(t); };
-
   const navValue = { openMessages: () => setOverlay("messages"), openNutrition: () => setOverlay("nutrition"), openAnalytics: () => setOverlay("analytics") };
 
-  // Overlay screens
   if (overlay === "messages") {
-    return (
-      <NavContext.Provider value={navValue}>
-        <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
-          <MessagesScreen onBack={closeOverlay} />
-          <TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
-        </AnnouncementContext.Provider>
-      </NavContext.Provider>
-    );
+    return (<NavContext.Provider value={navValue}><AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
+      <MessagesScreen onBack={closeOverlay} /><TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
+    </AnnouncementContext.Provider></NavContext.Provider>);
   }
-
   if (overlay === "nutrition") {
-    return (
-      <NavContext.Provider value={navValue}>
-        <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
-          <NutritionScreen onBack={closeOverlay} />
-          <TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
-        </AnnouncementContext.Provider>
-      </NavContext.Provider>
-    );
+    return (<NavContext.Provider value={navValue}><AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
+      <NutritionScreen onBack={closeOverlay} /><TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
+    </AnnouncementContext.Provider></NavContext.Provider>);
   }
-
   if (overlay === "analytics") {
-    return (
-      <NavContext.Provider value={navValue}>
-        <AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
-          <AnalyticsScreen onBack={closeOverlay} />
-          <TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
-        </AnnouncementContext.Provider>
-      </NavContext.Provider>
-    );
+    return (<NavContext.Provider value={navValue}><AnnouncementContext.Provider value={{ announcements, reload: loadAnnouncements }}>
+      <AnalyticsScreen onBack={closeOverlay} /><TabBar active={tab} setActive={switchTab} isStaff={isStaff} />
+    </AnnouncementContext.Provider></NavContext.Provider>);
   }
 
   return (
@@ -171,7 +165,8 @@ const MainApp = () => {
 // ============================================================
 export default function App() {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState("login");
+  const [view, setView] = useState("login"); // login | signup | activate
+  const [activationToken, setActivationToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [settingsVersion, setSettingsVersion] = useState(0);
   const login = useCallback((u) => setUser(u), []);
@@ -189,6 +184,16 @@ export default function App() {
   useEffect(() => {
     (async () => {
       await loadGymSettings();
+
+      // Check for activation token in URL
+      const token = getActivationToken();
+      if (token) {
+        setActivationToken(token);
+        setView("activate");
+        setLoading(false);
+        return;
+      }
+
       try {
         const member = await services.auth.getSession();
         if (member) {
@@ -202,6 +207,21 @@ export default function App() {
       setLoading(false);
     })();
   }, [loadGymSettings]);
+
+  // Handle activation completion — auto-login
+  const handleActivated = async (email, password) => {
+    clearActivationToken();
+    setActivationToken(null);
+    try {
+      const member = await services.auth.login(email, password);
+      setUser(member);
+      const allMembers = await services.members.getAll();
+      setMembersCache(allMembers);
+    } catch (e) {
+      console.error("Auto-login after activation failed:", e);
+      setView("login");
+    }
+  };
 
   if (loading) {
     return (
@@ -223,7 +243,13 @@ export default function App() {
       <style>{globalCSS(THEME)}</style>
       <div style={S.app}>
         <AuthContext.Provider value={{ user, login, logout }}>
-          {!user ? (view === "login" ? <LoginScreen onSwitch={() => setView("signup")} onLogin={login} /> : <SignupScreen onSwitch={() => setView("login")} onLogin={login} />) : <MainApp />}
+          {!user ? (
+            view === "activate" && activationToken
+              ? <ActivateScreen token={activationToken} onActivated={handleActivated} onCancel={() => { clearActivationToken(); setActivationToken(null); setView("login"); }} />
+              : view === "signup"
+                ? <SignupScreen onSwitch={() => setView("login")} onLogin={login} />
+                : <LoginScreen onSwitch={() => setView("signup")} onLogin={login} />
+          ) : <MainApp />}
         </AuthContext.Provider>
       </div>
     </SettingsContext.Provider>
