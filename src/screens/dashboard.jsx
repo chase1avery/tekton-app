@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { GYM_CONFIG, THEME, S, I, services, supabase, useAuth, useAnnouncements, AnnouncementBanner, FlameStreak, SettingsContext, AnnouncementContext, membersCache, setMembersCache, calcStreak, streakCache, setStreakCache, getStreak, getWeekDates, fmt, fmtLong, fmtTime, today, autoResize, WEIGHT_LEVELS, MOVEMENT_LIBRARY, darkenHex, lightenHex, subtleHex, applyGymSettings, renderWithLinks } from '../config/shared';
 import { NotificationOptIn } from '../components/NotificationOptIn';
+import { VideoModal, useVideoLibrary, MovementName } from '../components/VideoModal';
 
 const DashboardScreen = () => {
   const { user } = useAuth();
+  const { getVideoUrl } = useVideoLibrary();
+  const [playingVideo, setPlayingVideo] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [wod, setWod] = useState(null);
   const [results, setResults] = useState([]);
@@ -75,7 +78,15 @@ const DashboardScreen = () => {
         {/* WOD Movements */}
         {wod.movements.length>0&&<div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`}}>
           <div style={{fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1.5px",color:THEME.colors.primary,marginBottom:"4px"}}>⏱️ WOD</div>
-          {wod.movements.map((m,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0"}}><span style={{fontWeight:"600",fontSize:"14px"}}>{m.name}</span><span style={{color:THEME.colors.textSecondary,fontSize:"14px",fontFamily:THEME.fonts.mono}}>{m.reps}{m.weight?` @ ${m.weight}`:""}</span></div>)}
+          {wod.movements.map((m,i)=> m._or_divider ? (
+            <div key={`or-${i}`} style={{display:"flex",alignItems:"center",gap:"8px",margin:"6px 0"}}>
+              <div style={{flex:1,height:"1px",background:THEME.colors.accent}} />
+              <span style={{fontFamily:THEME.fonts.display,fontSize:"12px",letterSpacing:"2px",color:THEME.colors.accent}}>OR</span>
+              <div style={{flex:1,height:"1px",background:THEME.colors.accent}} />
+            </div>
+          ) : (
+            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0"}}><MovementName name={m.name} videoUrl={getVideoUrl(m.name)} onPlay={(n,u)=>setPlayingVideo({name:n,url:u})} style={{fontSize:"14px"}} /><span style={{color:THEME.colors.textSecondary,fontSize:"14px",fontFamily:THEME.fonts.mono}}>{m.reps}{m.weight?` @ ${m.weight}`:""}</span></div>
+          ))}
         </div>}
 
         {/* Accessory */}
@@ -112,6 +123,10 @@ const DashboardScreen = () => {
           {r.notes&&<div style={{color:THEME.colors.textMuted,fontSize:"12px",marginTop:"4px",marginLeft:"52px",fontStyle:"italic"}}>{r.notes}</div>}
         </div>)}
       </div>
+      {/* Video Playback Modal */}
+      {playingVideo && (
+        <VideoModal movement={playingVideo.name} videoUrl={playingVideo.url} onClose={()=>setPlayingVideo(null)} />
+      )}
     </div>
   );
 };

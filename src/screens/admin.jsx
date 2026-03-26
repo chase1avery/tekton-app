@@ -111,6 +111,7 @@ const AdminScreen = () => {
   const [schedForm, setSchedForm] = useState({ title:"CrossFit", date:today(), startTime:"05:00", endTime:"06:00", capacity:"16", coachId:user.id });
   const [schedSaving, setSchedSaving] = useState(false);
   const [schedSaved, setSchedSaved] = useState(false);
+  const [schedApplyAll, setSchedApplyAll] = useState(false);
   const [schedWodMode, setSchedWodMode] = useState("none"); // "none" | "existing" | "new"
   const [schedSelWodId, setSchedSelWodId] = useState(""); // selected existing workout ID
   const [schedNewWod, setSchedNewWod] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", movements:[] });
@@ -144,6 +145,17 @@ const AdminScreen = () => {
   const filteredRoster = rosterFilter === "all" ? members : members.filter(m => m.role === rosterFilter);
 
   // WOD builder
+  const [customMovements, setCustomMovements] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('forge-custom-movements') || '[]'); } catch { return []; }
+  });
+  const saveCustomMovement = (name) => {
+    if (!name || MOVEMENT_LIBRARY.includes(name) || customMovements.includes(name)) return;
+    const updated = [...customMovements, name].sort();
+    setCustomMovements(updated);
+    localStorage.setItem('forge-custom-movements', JSON.stringify(updated));
+  };
+  const allMovements = [...new Set([...MOVEMENT_LIBRARY, ...customMovements])].sort();
+
   const addMovement = () => {
     if (!newMov.name || !newMov.reps) return;
     const weights = {};
@@ -257,6 +269,7 @@ const AdminScreen = () => {
       workoutId = newWod.id;
     }
 
+    // Create the new session
     await services.sessions.create({
       gymId: GYM_CONFIG.id, coachId: schedForm.coachId,
       title: schedForm.title, date: schedForm.date,
@@ -264,8 +277,15 @@ const AdminScreen = () => {
       capacity: Number(schedForm.capacity) || 16,
       signups: [], workoutId,
     });
+
+    // Apply WOD to all existing sessions on this date
+    if (schedApplyAll && workoutId) {
+      const daySessions = sessions.filter(s => s.date === schedForm.date);
+      await Promise.all(daySessions.map(s => services.sessions.update(s.id, { workoutId })));
+    }
+
     setSchedSaving(false); setSchedSaved(true);
-    setSchedWodMode("none"); setSchedSelWodId("");
+    setSchedWodMode("none"); setSchedSelWodId(""); setSchedApplyAll(false);
     setSchedNewWod({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", movements:[] });
     setSchedNewMov({ name:"", reps:"", weight:"" });
     await load();
@@ -283,7 +303,7 @@ const AdminScreen = () => {
     setSchedNewWod(f => ({ ...f, movements: f.movements.filter((_, i) => i !== idx) }));
   };
   const schedFilteredMovements = schedMovSearch
-    ? MOVEMENT_LIBRARY.filter(m => m.toLowerCase().includes(schedMovSearch.toLowerCase()))
+    ? allMovements.filter(m => m.toLowerCase().includes(schedMovSearch.toLowerCase()))
     : [];
 
   const deleteSession = async (id) => {
@@ -292,7 +312,7 @@ const AdminScreen = () => {
   };
 
   const filteredMovements = movSearch
-    ? MOVEMENT_LIBRARY.filter(m => m.toLowerCase().includes(movSearch.toLowerCase()))
+    ? allMovements.filter(m => m.toLowerCase().includes(movSearch.toLowerCase()))
     : [];
 
   const adminTabs = [
@@ -778,10 +798,26 @@ const AdminScreen = () => {
             {/* Movement list */}
             {wodForm.movements.length > 0 && (
               <div style={{marginBottom:THEME.spacing.sm}}>
-                {wodForm.movements.map((m, idx) => (
+                {wodForm.movements.map((m, idx) => {
+                  // OR divider
+                  if (m._or_divider) {
+                    return (
+                      <div key={`or-${idx}`} style={{display:"flex",alignItems:"center",gap:THEME.spacing.md,margin:"8px 0"}}>
+                        <div style={{flex:1,height:"1px",background:THEME.colors.accent}} />
+                        <span style={{fontFamily:THEME.fonts.display,fontSize:"14px",letterSpacing:"3px",color:THEME.colors.accent,fontWeight:"700"}}>OR</span>
+                        <div style={{flex:1,height:"1px",background:THEME.colors.accent}} />
+                        <button onClick={()=>removeMovement(idx)} style={{background:"none",border:"none",cursor:"pointer",padding:"2px"}}>
+                          <I.x size={12} color={THEME.colors.textMuted} />
+                        </button>
+                      </div>
+                    );
+                  }
+                  // Count non-divider movements for numbering
+                  const movNumber = wodForm.movements.slice(0, idx).filter(x => !x._or_divider).length + 1;
+                  return (
                   <div key={idx} style={{padding:"8px 0",borderBottom:`1px solid ${THEME.colors.border}`}}>
                     <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
-                      <span style={{fontFamily:THEME.fonts.display,fontSize:"14px",color:THEME.colors.textMuted,width:"20px"}}>{idx+1}</span>
+                      <span style={{fontFamily:THEME.fonts.display,fontSize:"14px",color:THEME.colors.textMuted,width:"20px"}}>{movNumber}</span>
                       <div style={{flex:1}}>
                         <span style={{fontWeight:"600",fontSize:"14px"}}>{m.name}</span>
                         <span style={{color:THEME.colors.textSecondary,fontSize:"12px",marginLeft:"8px"}}>{m.reps}</span>
@@ -803,7 +839,8 @@ const AdminScreen = () => {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -822,6 +859,16 @@ const AdminScreen = () => {
                         borderBottom:`1px solid ${THEME.colors.border}`,
                       }}>{m}</button>
                     ))}
+                  </div>
+                )}
+                {filteredMovements.length === 0 && movSearch && movSearch.length > 1 && !allMovements.includes(movSearch) && (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:10,background:THEME.colors.surface,border:`1px solid ${THEME.colors.border}`,borderRadius:THEME.radius.md}}>
+                    <button onClick={()=>{saveCustomMovement(movSearch);setNewMov(f=>({...f,name:movSearch}));setMovSearch("");}} style={{
+                      display:"flex",alignItems:"center",gap:"6px",width:"100%",padding:"10px 12px",background:"none",border:"none",
+                      textAlign:"left",cursor:"pointer",color:THEME.colors.primary,fontSize:"13px",
+                    }}>
+                      <I.plus size={14} color={THEME.colors.primary} /> Save "{movSearch}" as new movement
+                    </button>
                   </div>
                 )}
               </div>
@@ -852,6 +899,18 @@ const AdminScreen = () => {
                 color:(!newMov.name||!newMov.reps)?THEME.colors.textMuted:THEME.colors.white,
                 fontFamily:THEME.fonts.display,fontSize:"12px",letterSpacing:"1px",
               }}>Add Movement</button>
+
+              {/* OR divider button */}
+              {wodForm.movements.length > 0 && !wodForm.movements[wodForm.movements.length - 1]?._or_divider && (
+                <button onClick={()=>setWodForm(f=>({...f,movements:[...f.movements,{_or_divider:true}]}))} style={{
+                  width:"100%",padding:"10px 16px",borderRadius:THEME.radius.md,border:`1px dashed ${THEME.colors.accent}`,
+                  background:"transparent",cursor:"pointer",marginTop:"8px",
+                  color:THEME.colors.accent,fontFamily:THEME.fonts.display,fontSize:"12px",letterSpacing:"2px",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:"8px",
+                }}>
+                  OR — Add Alternative Set
+                </button>
+              )}
             </div>
           </div>
 
@@ -1034,6 +1093,35 @@ const AdminScreen = () => {
                       {!w.warmup && !w.strength && !w.accessory && !w.notes && (
                         <div style={{padding:"8px 0",borderTop:`1px solid ${THEME.colors.border}`,color:THEME.colors.textMuted,fontSize:"12px",fontStyle:"italic"}}>No additional details</div>
                       )}
+                      {/* Action buttons */}
+                      <div style={{display:"flex",gap:"6px",paddingTop:"10px",borderTop:`1px solid ${THEME.colors.border}`,marginTop:"8px"}}>
+                        <button onClick={async (e)=>{e.stopPropagation();
+                          const copy = await services.workouts.create({
+                            gymId:GYM_CONFIG.id, createdBy:user.id,
+                            date:new Date().toISOString().split("T")[0]+"T00:00:00Z",
+                            title:`Copy of ${w.title}`, type:w.type, description:w.description,
+                            warmup:w.warmup, strength:w.strength, accessory:w.accessory,
+                            notes:w.notes, movements:w.movements, timeCap:w.timeCap,
+                            targetTime:w.targetTime, rounds:w.rounds,
+                          });
+                          await load();
+                        }} style={{
+                          flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
+                          padding:"8px",borderRadius:THEME.radius.md,border:`1px solid ${THEME.colors.border}`,
+                          background:"transparent",cursor:"pointer",
+                          color:THEME.colors.textSecondary,fontSize:"11px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                        }}>
+                          📋 Duplicate
+                        </button>
+                        <button onClick={async (e)=>{e.stopPropagation();if(confirm(`Delete "${w.title}"?`)){await services.workouts.delete(w.id);await load();}}} style={{
+                          display:"flex",alignItems:"center",justifyContent:"center",gap:"4px",
+                          padding:"8px 14px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                          background:"rgba(231,76,60,0.1)",color:THEME.colors.error,
+                          fontSize:"11px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                        }}>
+                          <I.trash size={12} color={THEME.colors.error} /> Delete
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1058,12 +1146,12 @@ const AdminScreen = () => {
               <div style={S.statLbl}>Videos Added</div>
             </div>
             <div style={S.statBox}>
-              <div style={{...S.statVal,fontSize:"20px",color:THEME.colors.textMuted}}>{MOVEMENT_LIBRARY.length - Object.keys(videoLibrary).length}</div>
+              <div style={{...S.statVal,fontSize:"20px",color:THEME.colors.textMuted}}>{allMovements.length - Object.keys(videoLibrary).length}</div>
               <div style={S.statLbl}>Without Video</div>
             </div>
           </div>
 
-          {MOVEMENT_LIBRARY
+          {allMovements
             .filter(m => !videoSearch || m.toLowerCase().includes(videoSearch.toLowerCase()))
             .map(movName => {
               const hasVideo = !!videoLibrary[movName];
@@ -1217,6 +1305,28 @@ const AdminScreen = () => {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Apply to all sessions toggle */}
+          <div style={{...S.card,padding:THEME.spacing.md,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontWeight:"600",fontSize:"14px"}}>Apply WOD to all classes on this date</div>
+              <div style={{fontSize:"12px",color:THEME.colors.textMuted,marginTop:"2px"}}>
+                {schedForm.date ? `${sessions.filter(s=>s.date===schedForm.date).length} existing session(s) on ${schedForm.date}` : "Select a date first"}
+              </div>
+            </div>
+            <button onClick={()=>setSchedApplyAll(v=>!v)} style={{
+              width:"48px",height:"28px",borderRadius:"14px",border:"none",cursor:"pointer",
+              background:schedApplyAll?THEME.colors.primary:THEME.colors.surfaceLight,
+              position:"relative",transition:"background 0.2s",
+            }}>
+              <div style={{
+                width:"22px",height:"22px",borderRadius:"11px",
+                background:THEME.colors.white,position:"absolute",top:"3px",
+                left:schedApplyAll?"23px":"3px",transition:"left 0.2s",
+                boxShadow:"0 1px 3px rgba(0,0,0,0.3)",
+              }} />
+            </button>
           </div>
 
           {/* WORKOUT ASSIGNMENT */}
@@ -1403,6 +1513,16 @@ const AdminScreen = () => {
                               borderBottom:`1px solid ${THEME.colors.border}`,
                             }}>{m}</button>
                           ))}
+                        </div>
+                      )}
+                      {schedFilteredMovements.length === 0 && schedMovSearch && schedMovSearch.length > 1 && !allMovements.includes(schedMovSearch) && (
+                        <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:10,background:THEME.colors.surface,border:`1px solid ${THEME.colors.border}`,borderRadius:THEME.radius.md}}>
+                          <button onClick={()=>{saveCustomMovement(schedMovSearch);setSchedNewMov(f=>({...f,name:schedMovSearch}));setSchedMovSearch("");}} style={{
+                            display:"flex",alignItems:"center",gap:"6px",width:"100%",padding:"8px 10px",background:"none",border:"none",
+                            textAlign:"left",cursor:"pointer",color:THEME.colors.primary,fontSize:"12px",
+                          }}>
+                            <I.plus size={12} color={THEME.colors.primary} /> Save "{schedMovSearch}" as new movement
+                          </button>
                         </div>
                       )}
                     </div>

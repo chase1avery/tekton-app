@@ -154,18 +154,29 @@ const ScheduleScreen = () => {
               <div style={{fontFamily:THEME.fonts.display,fontSize:"16px",letterSpacing:"2px",color:THEME.colors.primary}}>WOD</div>
               {w.timeCap && <div style={{...S.badge,background:THEME.colors.primarySubtle,color:THEME.colors.primary,fontSize:"10px",marginLeft:"auto"}}>{w.timeCap} min</div>}
             </div>
-            {w.movements.map((m, i) => (
+            {w.movements.map((m, i) => {
+              if (m._or_divider) {
+                return (
+                  <div key={`or-${i}`} style={{display:"flex",alignItems:"center",gap:THEME.spacing.md,margin:"6px 0"}}>
+                    <div style={{flex:1,height:"1px",background:THEME.colors.accent}} />
+                    <span style={{fontFamily:THEME.fonts.display,fontSize:"14px",letterSpacing:"3px",color:THEME.colors.accent,fontWeight:"700"}}>OR</span>
+                    <div style={{flex:1,height:"1px",background:THEME.colors.accent}} />
+                  </div>
+                );
+              }
+              const movNum = w.movements.slice(0, i).filter(x => !x._or_divider).length + 1;
+              return (
               <div key={i} style={{
                 display:"flex",justifyContent:"space-between",alignItems:"center",
                 padding:"10px 0",
-                borderBottom: i < w.movements.length - 1 ? `1px solid ${THEME.colors.border}` : "none",
+                borderBottom: i < w.movements.length - 1 && !w.movements[i+1]?._or_divider ? `1px solid ${THEME.colors.border}` : "none",
               }}>
                 <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
                   <div style={{
                     width:"28px",height:"28px",borderRadius:THEME.radius.sm,
                     background:THEME.colors.surfaceLight,display:"flex",alignItems:"center",justifyContent:"center",
                     fontFamily:THEME.fonts.display,fontSize:"13px",color:THEME.colors.textMuted,flexShrink:0,
-                  }}>{i + 1}</div>
+                  }}>{movNum}</div>
                   <div>
                     <MovementName name={m.name} videoUrl={getVideoUrl(m.name)} onPlay={(n,u)=>setPlayingVideo({name:n,url:u})} />
                     {m.notes && <div style={{color:THEME.colors.textMuted,fontSize:"11px",marginTop:"2px"}}>{m.notes}</div>}
@@ -176,7 +187,8 @@ const ScheduleScreen = () => {
                   {m.weight && <div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{m.weight}</div>}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
