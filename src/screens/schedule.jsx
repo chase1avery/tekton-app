@@ -13,7 +13,10 @@ const ScheduleScreen = () => {
   const [viewingWod, setViewingWod] = useState(null);
   const { getVideoUrl } = useVideoLibrary();
   const [playingVideo, setPlayingVideo] = useState(null);
-  const [waitlists, setWaitlists] = useState({}); // { sessionId: [{ memberId, position }] }
+  const [waitlists, setWaitlists] = useState({});
+  const [wodResForm, setWodResForm] = useState({ score: "", scoreType: "time", scale: "Rx", notes: "" });
+  const [wodResSaving, setWodResSaving] = useState(false);
+  const [wodResSaved, setWodResSaved] = useState(false);
 
   const weekDates = getWeekDates(weekStart);
 
@@ -227,6 +230,84 @@ const ScheduleScreen = () => {
             Programmed by Coach {(() => { const m = membersCache.find(x => x.id === w.createdBy); return m ? m.firstName : "Staff"; })()}
           </div>
         )}
+
+        {/* Post Result Form */}
+        <div style={{...S.card,borderLeft:`3px solid ${THEME.colors.accent}`,marginTop:THEME.spacing.md}}>
+          <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+            <span style={{fontSize:"16px"}}>🏆</span>
+            <div style={S.cardLbl}>Post Your Result</div>
+          </div>
+
+          <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+            <div style={{flex:2}}>
+              <label style={{...S.lbl,fontSize:"10px"}}>Score</label>
+              <input style={{...S.inp,padding:"10px 12px",fontSize:"14px"}} value={wodResForm.score}
+                onChange={e=>setWodResForm(f=>({...f,score:e.target.value}))}
+                placeholder={wodResForm.scoreType==="time"?"e.g. 8:42":"e.g. 5+12"}
+                onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+            </div>
+            <div style={{flex:1}}>
+              <label style={{...S.lbl,fontSize:"10px"}}>Type</label>
+              <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+                {["time","reps","rounds+reps","weight"].map(t=>(
+                  <button key={t} onClick={()=>setWodResForm(f=>({...f,scoreType:t}))} style={{
+                    padding:"5px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                    background:wodResForm.scoreType===t?THEME.colors.primarySubtle:THEME.colors.surfaceLight,
+                    color:wodResForm.scoreType===t?THEME.colors.primary:THEME.colors.textMuted,
+                    fontFamily:THEME.fonts.display,fontSize:"9px",letterSpacing:"1px",
+                  }}>{t}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{marginBottom:THEME.spacing.sm}}>
+            <label style={{...S.lbl,fontSize:"10px"}}>Scale</label>
+            <div style={{display:"flex",gap:"4px"}}>
+              {WEIGHT_LEVELS.map(level => {
+                const sel = wodResForm.scale === level;
+                const colors = { "Rx": THEME.colors.primary, "Rx+": THEME.colors.accent, "Mastered": "#9B59B6", "Scaled": THEME.colors.textSecondary, "Foundation": THEME.colors.textMuted };
+                return (
+                  <button key={level} onClick={()=>setWodResForm(f=>({...f,scale:level}))} style={{
+                    flex:1,padding:"8px 4px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                    background:sel?colors[level]+"22":THEME.colors.surfaceLight,
+                    color:sel?colors[level]:THEME.colors.textMuted,
+                    fontFamily:THEME.fonts.display,fontSize:"10px",letterSpacing:"0.5px",
+                    borderBottom:sel?`2px solid ${colors[level]}`:"2px solid transparent",
+                  }}>{level}</button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{marginBottom:THEME.spacing.sm}}>
+            <label style={{...S.lbl,fontSize:"10px"}}>Notes (optional)</label>
+            <input style={{...S.inp,padding:"10px 12px",fontSize:"13px"}} value={wodResForm.notes}
+              onChange={e=>setWodResForm(f=>({...f,notes:e.target.value}))}
+              placeholder="e.g. Broke up pull-ups 11/10..."
+              onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+          </div>
+
+          <button onClick={async ()=>{
+            if (!wodResForm.score || wodResSaving) return;
+            setWodResSaving(true);
+            const isRx = ["Rx","Rx+","Mastered"].includes(wodResForm.scale);
+            await services.results.create({
+              memberId: user.id, workoutId: w.id,
+              sessionId: null, score: wodResForm.score, scoreType: wodResForm.scoreType,
+              rx: isRx, scale: wodResForm.scale, notes: wodResForm.notes || null,
+              date: new Date().toISOString(),
+            });
+            setWodResSaving(false); setWodResSaved(true);
+            setWodResForm({ score:"", scoreType:"time", scale:"Rx", notes:"" });
+            setTimeout(()=>setWodResSaved(false), 2000);
+          }} disabled={wodResSaving||!wodResForm.score} style={{
+            ...S.btn1,marginTop:0,padding:"12px",
+            opacity:(!wodResForm.score||wodResSaving)?0.5:1,
+          }}>
+            {wodResSaved ? "Result Posted!" : wodResSaving ? "Posting..." : "Post Result"}
+          </button>
+        </div>
       </div>
     );
   }

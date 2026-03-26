@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { GYM_CONFIG, THEME, S, I, services, supabase, useAuth, useAnnouncements, AnnouncementBanner, FlameStreak, SettingsContext, AnnouncementContext, membersCache, setMembersCache, calcStreak, streakCache, setStreakCache, getStreak, getWeekDates, fmt, fmtLong, fmtTime, today, autoResize, WEIGHT_LEVELS, MOVEMENT_LIBRARY, darkenHex, lightenHex, subtleHex, applyGymSettings, renderWithLinks } from '../config/shared';
+import { SharePrButton } from '../components/SharePR';
 
 // ============================================================
 // RECORDS SCREEN (Phase 3 — NEW)
@@ -32,7 +33,7 @@ const RecordsScreen = () => {
   const [prSaved, setPrSaved] = useState(false);
 
   // Post Result form
-  const [resForm, setResForm] = useState({ workoutId: "", score: "", scoreType: "time", rx: true, notes: "" });
+  const [resForm, setResForm] = useState({ workoutId: "", score: "", scoreType: "time", scale: "Rx", notes: "" });
   const [resSaving, setResSaving] = useState(false);
   const [resSaved, setResSaved] = useState(false);
 
@@ -78,15 +79,16 @@ const RecordsScreen = () => {
   const handlePostResult = async () => {
     if (!resForm.score) return;
     setResSaving(true);
+    const isRx = ["Rx", "Rx+", "Mastered"].includes(resForm.scale);
     await services.results.create({
       memberId: user.id, workoutId: resForm.workoutId || null,
       sessionId: null, score: resForm.score, scoreType: resForm.scoreType,
-      rx: resForm.rx, notes: resForm.notes || null,
+      rx: isRx, scale: resForm.scale, notes: resForm.notes || null,
       date: new Date().toISOString(),
     });
     setResSaving(false);
     setResSaved(true);
-    setResForm({ workoutId: "", score: "", scoreType: "time", rx: true, notes: "" });
+    setResForm({ workoutId: "", score: "", scoreType: "time", scale: "Rx", notes: "" });
     await load();
     setTimeout(() => { setResSaved(false); setTab("results"); }, 1000);
   };
@@ -215,6 +217,9 @@ const RecordsScreen = () => {
                     <div style={{color:THEME.colors.textMuted,fontSize:"11px",fontFamily:THEME.fonts.display,letterSpacing:"1px"}}>
                       {pr.unit}
                     </div>
+                    <div style={{marginTop:"6px"}}>
+                      <SharePrButton pr={pr} userName={`${user.firstName} ${user.lastName}`} size="icon" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -245,8 +250,8 @@ const RecordsScreen = () => {
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
                       <span style={{fontFamily:THEME.fonts.display,fontSize:"18px"}}>{wod?.title || "Workout"}</span>
-                      {r.rx && <div style={{...S.badge,background:THEME.colors.accentSubtle,color:THEME.colors.accent,fontSize:"9px"}}>Rx</div>}
-                      {!r.rx && <div style={{...S.badge,background:"rgba(255,255,255,0.05)",color:THEME.colors.textMuted,fontSize:"9px"}}>Scaled</div>}
+                      {r.rx && <div style={{...S.badge,background:THEME.colors.accentSubtle,color:THEME.colors.accent,fontSize:"9px"}}>{r.scale || "Rx"}</div>}
+                      {!r.rx && <div style={{...S.badge,background:"rgba(255,255,255,0.05)",color:THEME.colors.textMuted,fontSize:"9px"}}>{r.scale || "Scaled"}</div>}
                     </div>
                     {wod && <div style={{color:THEME.colors.textSecondary,fontSize:"12px",marginTop:"2px"}}>{wod.type}{wod.timeCap ? ` · ${wod.timeCap} min` : ""}</div>}
                     <div style={{color:THEME.colors.textMuted,fontSize:"12px",marginTop:"4px"}}>
@@ -392,22 +397,24 @@ const RecordsScreen = () => {
               </div>
             </div>
 
-            {/* Rx Toggle */}
-            <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
-              <button onClick={()=>setResForm(f=>({...f,rx:!f.rx}))} style={{
-                width:"44px",height:"26px",borderRadius:THEME.radius.full,border:"none",cursor:"pointer",
-                background:resForm.rx?THEME.colors.primary:THEME.colors.surfaceLight,
-                position:"relative",transition:"background 0.2s",
-              }}>
-                <div style={{
-                  width:"20px",height:"20px",borderRadius:"50%",background:THEME.colors.white,
-                  position:"absolute",top:"3px",transition:"left 0.2s",
-                  left:resForm.rx?"21px":"3px",
-                }} />
-              </button>
-              <span style={{fontFamily:THEME.fonts.display,fontSize:"14px",letterSpacing:"1px",color:resForm.rx?THEME.colors.primary:THEME.colors.textMuted}}>
-                {resForm.rx ? "Rx" : "Scaled"}
-              </span>
+            {/* Scale Selector */}
+            <div style={{marginBottom:THEME.spacing.md}}>
+              <label style={{...S.lbl,fontSize:"11px"}}>Scale</label>
+              <div style={{display:"flex",gap:"4px"}}>
+                {WEIGHT_LEVELS.map(level => {
+                  const sel = resForm.scale === level;
+                  const colors = { "Rx": THEME.colors.primary, "Rx+": THEME.colors.accent, "Mastered": "#9B59B6", "Scaled": THEME.colors.textSecondary, "Foundation": THEME.colors.textMuted };
+                  return (
+                    <button key={level} onClick={()=>setResForm(f=>({...f,scale:level}))} style={{
+                      flex:1,padding:"8px 4px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                      background:sel?colors[level]+"22":THEME.colors.surfaceLight,
+                      color:sel?colors[level]:THEME.colors.textMuted,
+                      fontFamily:THEME.fonts.display,fontSize:"10px",letterSpacing:"0.5px",
+                      borderBottom:sel?`2px solid ${colors[level]}`:"2px solid transparent",
+                    }}>{level}</button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Notes */}

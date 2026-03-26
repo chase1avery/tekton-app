@@ -171,8 +171,12 @@ const CommunityScreen = () => {
                     </div>
                     <div style={{color:THEME.colors.textMuted,fontSize:"11px"}}>{timeAgo(r.date)}</div>
                   </div>
-                  {r.rx && <div style={{...S.badge,background:THEME.colors.accentSubtle,color:THEME.colors.accent,fontSize:"9px"}}>Rx</div>}
-                  {!r.rx && <div style={{...S.badge,background:"rgba(255,255,255,0.05)",color:THEME.colors.textMuted,fontSize:"9px"}}>Scaled</div>}
+                  {(() => {
+                    const scale = r.scale || (r.rx ? "Rx" : "Scaled");
+                    const scaleColors = { "Rx": THEME.colors.accent, "Rx+": THEME.colors.accent, "Mastered": "#9B59B6", "Scaled": THEME.colors.textMuted, "Foundation": THEME.colors.textMuted };
+                    const scaleBg = { "Rx": THEME.colors.accentSubtle, "Rx+": THEME.colors.accentSubtle, "Mastered": "rgba(155,89,182,0.12)", "Scaled": "rgba(255,255,255,0.05)", "Foundation": "rgba(255,255,255,0.05)" };
+                    return <div style={{...S.badge,background:scaleBg[scale]||scaleBg.Rx,color:scaleColors[scale]||scaleColors.Rx,fontSize:"9px"}}>{scale}</div>;
+                  })()}
                 </div>
 
                 {/* Workout + Score */}
@@ -315,8 +319,12 @@ const CommunityScreen = () => {
                           {mFull(r.memberId)}{isMe && <span style={{color:THEME.colors.textMuted,fontWeight:"400",fontSize:"12px"}}> (you)</span>}
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-                          {r.rx && <span style={{...S.badge,background:THEME.colors.accentSubtle,color:THEME.colors.accent,fontSize:"8px",padding:"1px 6px"}}>Rx</span>}
-                          {!r.rx && <span style={{...S.badge,background:"rgba(255,255,255,0.05)",color:THEME.colors.textMuted,fontSize:"8px",padding:"1px 6px"}}>Scaled</span>}
+                          {(() => {
+                            const scale = r.scale || (r.rx ? "Rx" : "Scaled");
+                            const sc = { "Rx": THEME.colors.accent, "Rx+": THEME.colors.accent, "Mastered": "#9B59B6", "Scaled": THEME.colors.textMuted, "Foundation": THEME.colors.textMuted };
+                            const sb = { "Rx": THEME.colors.accentSubtle, "Rx+": THEME.colors.accentSubtle, "Mastered": "rgba(155,89,182,0.12)", "Scaled": "rgba(255,255,255,0.05)", "Foundation": "rgba(255,255,255,0.05)" };
+                            return <span style={{...S.badge,background:sb[scale]||sb.Rx,color:sc[scale]||sc.Rx,fontSize:"8px",padding:"1px 6px"}}>{scale}</span>;
+                          })()}
                           {r.notes && <span style={{color:THEME.colors.textMuted,fontSize:"11px",fontStyle:"italic"}}>{r.notes}</span>}
                         </div>
                       </div>
