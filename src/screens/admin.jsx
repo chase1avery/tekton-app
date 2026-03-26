@@ -108,10 +108,10 @@ const AdminScreen = () => {
   const [csvResult, setCsvResult] = useState(null);
 
   // Schedule Builder
-  const [schedForm, setSchedForm] = useState({ title:"CrossFit", date:today(), startTime:"05:00", endTime:"06:00", capacity:"16", coachId:user.id });
+  const [schedForm, setSchedForm] = useState({ title:"CrossFit", date:today(), capacity:"16", coachId:user.id });
+  const [schedTimeSlots, setSchedTimeSlots] = useState([{ startTime: "05:00", endTime: "06:00" }]);
   const [schedSaving, setSchedSaving] = useState(false);
   const [schedSaved, setSchedSaved] = useState(false);
-  const [schedApplyAll, setSchedApplyAll] = useState(false);
   const [schedWodMode, setSchedWodMode] = useState("none"); // "none" | "existing" | "new"
   const [schedSelWodId, setSchedSelWodId] = useState(""); // selected existing workout ID
   const [schedNewWod, setSchedNewWod] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", movements:[] });
@@ -244,7 +244,8 @@ const AdminScreen = () => {
 
   // Schedule builder
   const handleAddSession = async () => {
-    if (!schedForm.title || !schedForm.date || !schedForm.startTime) return;
+    if (!schedForm.title || !schedForm.date || schedTimeSlots.length === 0) return;
+    if (schedTimeSlots.some(s => !s.startTime)) return;
     setSchedSaving(true);
 
     let workoutId = null;
@@ -269,23 +270,20 @@ const AdminScreen = () => {
       workoutId = newWod.id;
     }
 
-    // Create the new session
-    await services.sessions.create({
-      gymId: GYM_CONFIG.id, coachId: schedForm.coachId,
-      title: schedForm.title, date: schedForm.date,
-      startTime: schedForm.startTime, endTime: schedForm.endTime,
-      capacity: Number(schedForm.capacity) || 16,
-      signups: [], workoutId,
-    });
-
-    // Apply WOD to all existing sessions on this date
-    if (schedApplyAll && workoutId) {
-      const daySessions = sessions.filter(s => s.date === schedForm.date);
-      await Promise.all(daySessions.map(s => services.sessions.update(s.id, { workoutId })));
-    }
+    // Create a session for each time slot
+    await Promise.all(schedTimeSlots.map(slot =>
+      services.sessions.create({
+        gymId: GYM_CONFIG.id, coachId: schedForm.coachId,
+        title: schedForm.title, date: schedForm.date,
+        startTime: slot.startTime, endTime: slot.endTime,
+        capacity: Number(schedForm.capacity) || 16,
+        signups: [], workoutId,
+      })
+    ));
 
     setSchedSaving(false); setSchedSaved(true);
-    setSchedWodMode("none"); setSchedSelWodId(""); setSchedApplyAll(false);
+    setSchedWodMode("none"); setSchedSelWodId("");
+    setSchedTimeSlots([{ startTime: "05:00", endTime: "06:00" }]);
     setSchedNewWod({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", movements:[] });
     setSchedNewMov({ name:"", reps:"", weight:"" });
     await load();
@@ -1282,15 +1280,45 @@ const AdminScreen = () => {
               </div>
             </div>
 
-            <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
+            <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
               <div style={{flex:1}}><label style={{...S.lbl,fontSize:"11px"}}>Date</label><input style={S.inp} type="date" value={schedForm.date} onChange={e=>setSchedForm(f=>({...f,date:e.target.value}))} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>
               <div style={{flex:1}}><label style={{...S.lbl,fontSize:"11px"}}>Capacity</label><input style={S.inp} type="number" value={schedForm.capacity} onChange={e=>setSchedForm(f=>({...f,capacity:e.target.value}))} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>
             </div>
 
-            <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
-              <div style={{flex:1}}><label style={{...S.lbl,fontSize:"11px"}}>Start</label><input style={S.inp} type="time" value={schedForm.startTime} onChange={e=>setSchedForm(f=>({...f,startTime:e.target.value}))} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>
-              <div style={{flex:1}}><label style={{...S.lbl,fontSize:"11px"}}>End</label><input style={S.inp} type="time" value={schedForm.endTime} onChange={e=>setSchedForm(f=>({...f,endTime:e.target.value}))} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>
-            </div>
+            {/* Time Slots */}
+            <label style={{...S.lbl,fontSize:"11px"}}>Sessions ({schedTimeSlots.length})</label>
+            {schedTimeSlots.map((slot, idx) => (
+              <div key={idx} style={{display:"flex",gap:THEME.spacing.sm,marginBottom:"6px",alignItems:"center"}}>
+                <div style={{flex:1}}><input style={{...S.inp,padding:"10px 12px",fontSize:"14px"}} type="time" value={slot.startTime} onChange={e=>{const v=e.target.value;setSchedTimeSlots(s=>s.map((sl,i)=>i===idx?{...sl,startTime:v}:sl));}} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>
+                <span style={{color:THEME.colors.textMuted,fontSize:"12px"}}>to</span>
+                <div style={{flex:1}}><input style={{...S.inp,padding:"10px 12px",fontSize:"14px"}} type="time" value={slot.endTime} onChange={e=>{const v=e.target.value;setSchedTimeSlots(s=>s.map((sl,i)=>i===idx?{...sl,endTime:v}:sl));}} onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} /></div>
+                {schedTimeSlots.length > 1 && (
+                  <button onClick={()=>setSchedTimeSlots(s=>s.filter((_,i)=>i!==idx))} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",flexShrink:0}}>
+                    <I.x size={16} color={THEME.colors.error} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button onClick={()=>{
+              const last = schedTimeSlots[schedTimeSlots.length-1];
+              // Auto-increment: next slot starts when last one ends, same duration
+              const [sh,sm] = last.startTime.split(":").map(Number);
+              const [eh,em] = last.endTime.split(":").map(Number);
+              const dur = (eh*60+em) - (sh*60+sm);
+              const newStart = last.endTime;
+              const newEndMin = eh*60+em+dur;
+              const newEnd = `${String(Math.floor(newEndMin/60)).padStart(2,"0")}:${String(newEndMin%60).padStart(2,"0")}`;
+              setSchedTimeSlots(s=>[...s, {startTime:newStart, endTime:newEnd}]);
+            }} style={{
+              display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
+              width:"100%",padding:"10px",borderRadius:THEME.radius.md,
+              border:`1px dashed ${THEME.colors.primary}`,background:"transparent",
+              cursor:"pointer",color:THEME.colors.primary,
+              fontFamily:THEME.fonts.display,fontSize:"12px",letterSpacing:"1px",
+              marginBottom:THEME.spacing.md,
+            }}>
+              <I.plus size={14} color={THEME.colors.primary} /> Add Session
+            </button>
 
             <div style={{marginBottom:THEME.spacing.md}}>
               <label style={{...S.lbl,fontSize:"11px"}}>Coach</label>
@@ -1305,28 +1333,6 @@ const AdminScreen = () => {
                 ))}
               </div>
             </div>
-          </div>
-
-          {/* Apply to all sessions toggle */}
-          <div style={{...S.card,padding:THEME.spacing.md,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div>
-              <div style={{fontWeight:"600",fontSize:"14px"}}>Apply WOD to all classes on this date</div>
-              <div style={{fontSize:"12px",color:THEME.colors.textMuted,marginTop:"2px"}}>
-                {schedForm.date ? `${sessions.filter(s=>s.date===schedForm.date).length} existing session(s) on ${schedForm.date}` : "Select a date first"}
-              </div>
-            </div>
-            <button onClick={()=>setSchedApplyAll(v=>!v)} style={{
-              width:"48px",height:"28px",borderRadius:"14px",border:"none",cursor:"pointer",
-              background:schedApplyAll?THEME.colors.primary:THEME.colors.surfaceLight,
-              position:"relative",transition:"background 0.2s",
-            }}>
-              <div style={{
-                width:"22px",height:"22px",borderRadius:"11px",
-                background:THEME.colors.white,position:"absolute",top:"3px",
-                left:schedApplyAll?"23px":"3px",transition:"left 0.2s",
-                boxShadow:"0 1px 3px rgba(0,0,0,0.3)",
-              }} />
-            </button>
           </div>
 
           {/* WORKOUT ASSIGNMENT */}
@@ -1570,7 +1576,7 @@ const AdminScreen = () => {
             ...S.btn1,marginBottom:THEME.spacing.lg,
             opacity:(schedSaving || (schedWodMode==="new" && !schedNewWod.title))?0.5:1,
           }}>
-            {schedSaved ? "Session Added!" : schedSaving ? "Creating..." : schedWodMode==="new" ? "Create WOD & Add Session" : "Add Session"}
+            {schedSaved ? `${schedTimeSlots.length} Session${schedTimeSlots.length>1?"s":""} Added!` : schedSaving ? "Creating..." : schedWodMode==="new" ? `Create WOD & Add ${schedTimeSlots.length} Session${schedTimeSlots.length>1?"s":""}` : `Add ${schedTimeSlots.length} Session${schedTimeSlots.length>1?"s":""}`}
           </button>
 
           {/* Today's schedule */}
