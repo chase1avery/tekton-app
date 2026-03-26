@@ -34,6 +34,7 @@ const RecordsScreen = () => {
 
   // Post Result form
   const [resForm, setResForm] = useState({ workoutId: "", score: "", scoreType: "time", scale: "Rx", notes: "" });
+  const [editingResultId, setEditingResultId] = useState(null);
   const [resSaving, setResSaving] = useState(false);
   const [resSaved, setResSaved] = useState(false);
 
@@ -51,6 +52,18 @@ const RecordsScreen = () => {
   }, [user.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Check if user already posted a result for selected workout
+  const selectWorkout = (wId) => {
+    const existing = results.find(r => r.workoutId === wId);
+    if (existing) {
+      setResForm({ workoutId: wId, score: existing.score, scoreType: existing.scoreType, scale: existing.scale || (existing.rx ? "Rx" : "Scaled"), notes: existing.notes || "" });
+      setEditingResultId(existing.id);
+    } else {
+      setResForm(f => ({ ...f, workoutId: wId, score: "", scoreType: "time", scale: "Rx", notes: "" }));
+      setEditingResultId(null);
+    }
+  };
 
   const filteredPrs = catFilter === "all" ? prs : prs.filter(p => p.category === catFilter);
 
@@ -80,15 +93,23 @@ const RecordsScreen = () => {
     if (!resForm.score) return;
     setResSaving(true);
     const isRx = ["Rx", "Rx+", "Mastered"].includes(resForm.scale);
-    await services.results.create({
-      memberId: user.id, workoutId: resForm.workoutId || null,
-      sessionId: null, score: resForm.score, scoreType: resForm.scoreType,
-      rx: isRx, scale: resForm.scale, notes: resForm.notes || null,
-      date: new Date().toISOString(),
-    });
+    if (editingResultId) {
+      await services.results.update(editingResultId, {
+        score: resForm.score, scoreType: resForm.scoreType,
+        rx: isRx, scale: resForm.scale, notes: resForm.notes || null,
+      });
+    } else {
+      await services.results.create({
+        memberId: user.id, workoutId: resForm.workoutId || null,
+        sessionId: null, score: resForm.score, scoreType: resForm.scoreType,
+        rx: isRx, scale: resForm.scale, notes: resForm.notes || null,
+        date: new Date().toISOString(),
+      });
+    }
     setResSaving(false);
     setResSaved(true);
     setResForm({ workoutId: "", score: "", scoreType: "time", scale: "Rx", notes: "" });
+    setEditingResultId(null);
     await load();
     setTimeout(() => { setResSaved(false); setTab("results"); }, 1000);
   };
@@ -357,21 +378,33 @@ const RecordsScreen = () => {
 
           {/* Post a Workout Result */}
           <div style={S.card}>
-            <div style={S.cardLbl}>Post Workout Result</div>
+            <div style={S.cardLbl}>{editingResultId ? "Edit Your Result" : "Post Workout Result"}</div>
 
             {/* Workout Selector */}
             <div style={{marginBottom:THEME.spacing.md}}>
               <label style={{...S.lbl,fontSize:"11px"}}>Workout</label>
               <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
-                {allWorkouts.map(w => (
-                  <button key={w.id} onClick={() => setResForm(f => ({ ...f, workoutId: w.id }))} style={{
+                {allWorkouts.map(w => {
+                  const hasResult = results.some(r => r.workoutId === w.id);
+                  return (
+                  <button key={w.id} onClick={() => selectWorkout(w.id)} style={{
                     padding:"8px 14px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
                     background:resForm.workoutId===w.id?THEME.colors.primarySubtle:THEME.colors.surfaceLight,
                     color:resForm.workoutId===w.id?THEME.colors.primary:THEME.colors.textSecondary,
                     fontFamily:THEME.fonts.body,fontSize:"13px",
-                  }}>{w.title} <span style={{opacity:0.5,fontSize:"11px"}}>{w.type}</span></button>
-                ))}
+                    position:"relative",
+                  }}>
+                    {w.title} <span style={{opacity:0.5,fontSize:"11px"}}>{w.type}</span>
+                    {hasResult && <span style={{position:"absolute",top:"-2px",right:"-2px",width:"8px",height:"8px",borderRadius:"50%",background:THEME.colors.accent}} />}
+                  </button>
+                  );
+                })}
               </div>
+              {editingResultId && (
+                <div style={{marginTop:"6px",fontSize:"12px",color:THEME.colors.accent,fontFamily:THEME.fonts.display,letterSpacing:"0.5px"}}>
+                  ✏️ Editing your existing result for this workout
+                </div>
+              )}
             </div>
 
             {/* Score */}
@@ -429,7 +462,7 @@ const RecordsScreen = () => {
               ...S.btn1,marginTop:THEME.spacing.sm,
               opacity:(!resForm.score||resSaving)?0.5:1,
             }}>
-              {resSaved ? "Result Posted!" : resSaving ? "Posting..." : "Post Result"}
+              {resSaved ? (editingResultId ? "Result Updated!" : "Result Posted!") : resSaving ? (editingResultId ? "Updating..." : "Posting...") : (editingResultId ? "Update Result" : "Post Result")}
             </button>
           </div>
         </>
