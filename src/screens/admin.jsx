@@ -100,10 +100,13 @@ const AdminScreen = () => {
 
   // WOD Builder
   const [wodForm, setWodForm] = useState({ title:"", type:"ForTime", description:"", timeCap:"", warmup:"", strength:"", accessory:"", notes:"", date:today(), targetTime:"", movements:[] });
+  const [editingWodId, setEditingWodId] = useState(null);
   const [newMov, setNewMov] = useState({ name:"", reps:"", weights:{Rx:"",["Rx+"]:"",Mastered:"",Scaled:"",Foundation:""}, notes:"" });
   const [wodSaving, setWodSaving] = useState(false);
   const [wodSaved, setWodSaved] = useState(false);
   const [movSearch, setMovSearch] = useState("");
+  const [editingSession, setEditingSession] = useState(null);
+  const [editSessionForm, setEditSessionForm] = useState({ startTime:"", endTime:"", coachId:"", capacity:"", workoutId:"" });
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvResult, setCsvResult] = useState(null);
 
@@ -169,26 +172,65 @@ const AdminScreen = () => {
   };
   const handlePublishWod = async () => {
     if (!wodForm.title) return;
-    // Prevent creating WODs before current date
-    if (wodForm.date < today()) { alert("Cannot create a WOD for a past date."); return; }
     setWodSaving(true);
-    await services.workouts.create({
-      gymId: GYM_CONFIG.id, createdBy: user.id,
-      date: wodForm.date + "T00:00:00Z", title: wodForm.title,
-      type: wodForm.type, description: wodForm.description,
-      warmup: wodForm.warmup || null,
-      strength: wodForm.strength || null,
-      accessory: wodForm.accessory || null,
-      notes: wodForm.notes || null,
+
+    const wodData = {
+      title: wodForm.title, type: wodForm.type, description: wodForm.description,
+      warmup: wodForm.warmup || null, strength: wodForm.strength || null,
+      accessory: wodForm.accessory || null, notes: wodForm.notes || null,
       movements: wodForm.movements,
       timeCap: wodForm.timeCap ? Number(wodForm.timeCap) : null,
       targetTime: wodForm.targetTime || null,
-      rounds: null,
-    });
-    setWodSaving(false); setWodSaved(true);
+    };
+
+    if (editingWodId) {
+      // Update existing WOD
+      await services.workouts.update(editingWodId, { ...wodData, date: wodForm.date + "T00:00:00Z" });
+    } else {
+      // Create new WOD
+      if (wodForm.date < today()) { alert("Cannot create a WOD for a past date."); setWodSaving(false); return; }
+      await services.workouts.create({ gymId: GYM_CONFIG.id, createdBy: user.id, date: wodForm.date + "T00:00:00Z", ...wodData, rounds: null });
+    }
+
+    setWodSaving(false); setWodSaved(true); setEditingWodId(null);
     setWodForm({ title: "", type: "ForTime", description: "", timeCap: "", warmup: "", strength: "", accessory: "", notes: "", date: today(), targetTime: "", movements: [] });
     await load();
     setTimeout(() => setWodSaved(false), 1500);
+  };
+
+  const startEditWod = (w) => {
+    setEditingWodId(w.id);
+    setWodForm({
+      title: w.title, type: w.type, description: w.description || "",
+      timeCap: w.timeCap ? String(w.timeCap) : "", warmup: w.warmup || "",
+      strength: w.strength || "", accessory: w.accessory || "",
+      notes: w.notes || "", date: w.date?.split("T")[0] || today(),
+      targetTime: w.targetTime || "", movements: w.movements || [],
+    });
+    // Scroll to top of programmer
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEditWod = () => {
+    setEditingWodId(null);
+    setWodForm({ title: "", type: "ForTime", description: "", timeCap: "", warmup: "", strength: "", accessory: "", notes: "", date: today(), targetTime: "", movements: [] });
+  };
+
+  // Session editing
+  const startEditSession = (s) => {
+    setEditingSession(s.id);
+    setEditSessionForm({ startTime: s.startTime, endTime: s.endTime, coachId: s.coachId, capacity: String(s.capacity), workoutId: s.workoutId || "" });
+  };
+
+  const saveEditSession = async () => {
+    if (!editingSession) return;
+    await services.sessions.update(editingSession, {
+      startTime: editSessionForm.startTime, endTime: editSessionForm.endTime,
+      coachId: editSessionForm.coachId, capacity: Number(editSessionForm.capacity) || 16,
+      workoutId: editSessionForm.workoutId || null,
+    });
+    setEditingSession(null);
+    await load();
   };
 
   // CSV Import handler
@@ -676,7 +718,16 @@ const AdminScreen = () => {
       {tab === "wod" && (
         <>
           <div style={S.card}>
-            <div style={S.cardLbl}>Program a WOD</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:THEME.spacing.sm}}>
+              <div style={S.cardLbl}>{editingWodId ? "Edit WOD" : "Program a WOD"}</div>
+              {editingWodId && (
+                <button onClick={cancelEditWod} style={{
+                  padding:"6px 12px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                  background:THEME.colors.surfaceLight,color:THEME.colors.textMuted,
+                  fontSize:"10px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                }}>Cancel Edit</button>
+              )}
+            </div>
 
             <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.md}}>
               <div style={{flex:2}}>
@@ -975,7 +1026,7 @@ const AdminScreen = () => {
             ...S.btn1,marginBottom:THEME.spacing.lg,
             opacity:(!wodForm.title||wodSaving)?0.5:1,
           }}>
-            {wodSaved?"WOD Published!":wodSaving?"Publishing...":"Publish WOD"}
+            {wodSaved?(editingWodId?"WOD Updated!":"WOD Published!"):wodSaving?(editingWodId?"Updating...":"Publishing..."):(editingWodId?"Update WOD":"Publish WOD")}
           </button>
 
           {/* Existing WODs */}
@@ -1093,6 +1144,14 @@ const AdminScreen = () => {
                       )}
                       {/* Action buttons */}
                       <div style={{display:"flex",gap:"6px",paddingTop:"10px",borderTop:`1px solid ${THEME.colors.border}`,marginTop:"8px"}}>
+                        <button onClick={(e)=>{e.stopPropagation();startEditWod(w);}} style={{
+                          flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",
+                          padding:"8px",borderRadius:THEME.radius.md,border:"none",cursor:"pointer",
+                          background:THEME.colors.primarySubtle,
+                          color:THEME.colors.primary,fontSize:"11px",fontFamily:THEME.fonts.display,letterSpacing:"1px",
+                        }}>
+                          ✏️ Edit
+                        </button>
                         <button onClick={async (e)=>{e.stopPropagation();
                           const copy = await services.workouts.create({
                             gymId:GYM_CONFIG.id, createdBy:user.id,
@@ -1580,28 +1639,89 @@ const AdminScreen = () => {
           <div style={{...S.cardLbl,marginBottom:THEME.spacing.sm}}>Today's Schedule ({todaySessions.length} classes)</div>
           {todaySessions.map(s => {
             const linkedWod = s.workoutId ? workouts.find(w=>w.id===s.workoutId) : null;
+            const isEditing = editingSession === s.id;
             return (
               <div key={s.id} style={{...S.card,padding:THEME.spacing.md,marginBottom:"8px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
-                  <div style={{width:"3px",height:"40px",borderRadius:"2px",background:THEME.colors.primary,flexShrink:0}} />
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:"600",fontSize:"14px"}}>{s.title}</div>
-                    <div style={{color:THEME.colors.textSecondary,fontSize:"12px"}}>{fmtTime(s.startTime)}–{fmtTime(s.endTime)} · {coachName(s.coachId)}</div>
-                    {linkedWod && (
-                      <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"4px"}}>
-                        <span style={{fontSize:"12px"}}>⏱️</span>
-                        <span style={{fontFamily:THEME.fonts.display,fontSize:"12px",color:THEME.colors.primary,letterSpacing:"0.5px"}}>{linkedWod.title}</span>
-                        <span style={{...S.badge,fontSize:"8px",background:THEME.colors.primarySubtle,color:THEME.colors.primary}}>{linkedWod.type}</span>
+                {!isEditing ? (
+                  <>
+                    <div style={{display:"flex",alignItems:"center",gap:THEME.spacing.sm}}>
+                      <div style={{width:"3px",height:"40px",borderRadius:"2px",background:THEME.colors.primary,flexShrink:0}} />
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:"600",fontSize:"14px"}}>{s.title}</div>
+                        <div style={{color:THEME.colors.textSecondary,fontSize:"12px"}}>{fmtTime(s.startTime)}–{fmtTime(s.endTime)} · {coachName(s.coachId)}</div>
+                        {linkedWod && (
+                          <div style={{display:"flex",alignItems:"center",gap:"6px",marginTop:"4px"}}>
+                            <span style={{fontSize:"12px"}}>⏱️</span>
+                            <span style={{fontFamily:THEME.fonts.display,fontSize:"12px",color:THEME.colors.primary,letterSpacing:"0.5px"}}>{linkedWod.title}</span>
+                            <span style={{...S.badge,fontSize:"8px",background:THEME.colors.primarySubtle,color:THEME.colors.primary}}>{linkedWod.type}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
+                      <div style={{textAlign:"right",marginRight:"4px"}}>
+                        <div style={{fontFamily:THEME.fonts.mono,fontSize:"14px"}}>{s.signups.length}/{s.capacity}</div>
+                      </div>
+                      <button onClick={()=>startEditSession(s)} style={{background:"none",border:"none",cursor:"pointer",padding:"6px"}}>
+                        <I.edit size={14} color={THEME.colors.primary} />
+                      </button>
+                      <button onClick={()=>deleteSession(s.id)} style={{background:"none",border:"none",cursor:"pointer",padding:"6px"}}>
+                        <I.trash size={14} color={THEME.colors.error} />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:THEME.spacing.sm}}>
+                      <div style={{...S.cardLbl,marginBottom:0}}>Edit Session</div>
+                      <button onClick={()=>setEditingSession(null)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px"}}>
+                        <I.x size={16} color={THEME.colors.textMuted} />
+                      </button>
+                    </div>
+                    <div style={{display:"flex",gap:THEME.spacing.sm,marginBottom:THEME.spacing.sm}}>
+                      <div style={{flex:1}}>
+                        <label style={{...S.lbl,fontSize:"10px"}}>Start</label>
+                        <input style={{...S.inp,padding:"8px 10px",fontSize:"13px"}} type="time" value={editSessionForm.startTime}
+                          onChange={e=>setEditSessionForm(f=>({...f,startTime:e.target.value}))}
+                          onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                      </div>
+                      <div style={{flex:1}}>
+                        <label style={{...S.lbl,fontSize:"10px"}}>End</label>
+                        <input style={{...S.inp,padding:"8px 10px",fontSize:"13px"}} type="time" value={editSessionForm.endTime}
+                          onChange={e=>setEditSessionForm(f=>({...f,endTime:e.target.value}))}
+                          onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                      </div>
+                      <div style={{flex:1}}>
+                        <label style={{...S.lbl,fontSize:"10px"}}>Cap</label>
+                        <input style={{...S.inp,padding:"8px 10px",fontSize:"13px"}} type="number" value={editSessionForm.capacity}
+                          onChange={e=>setEditSessionForm(f=>({...f,capacity:e.target.value}))}
+                          onFocus={e=>(e.target.style.borderColor=THEME.colors.primary)} onBlur={e=>(e.target.style.borderColor=THEME.colors.border)} />
+                      </div>
+                    </div>
+                    <div style={{marginBottom:THEME.spacing.sm}}>
+                      <label style={{...S.lbl,fontSize:"10px"}}>Coach</label>
+                      <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
+                        {coaches.map(c=>(
+                          <button key={c.id} onClick={()=>setEditSessionForm(f=>({...f,coachId:c.id}))} style={{
+                            padding:"5px 10px",borderRadius:THEME.radius.sm,border:"none",cursor:"pointer",
+                            background:editSessionForm.coachId===c.id?THEME.colors.primarySubtle:THEME.colors.surfaceLight,
+                            color:editSessionForm.coachId===c.id?THEME.colors.primary:THEME.colors.textMuted,
+                            fontSize:"11px",fontFamily:THEME.fonts.display,
+                          }}>{c.firstName} {c.lastName.charAt(0)}.</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{marginBottom:THEME.spacing.sm}}>
+                      <label style={{...S.lbl,fontSize:"10px"}}>Assigned WOD</label>
+                      <select value={editSessionForm.workoutId} onChange={e=>setEditSessionForm(f=>({...f,workoutId:e.target.value}))}
+                        style={{...S.inp,padding:"8px 10px",fontSize:"13px"}}>
+                        <option value="">No Workout</option>
+                        {workouts.map(w=><option key={w.id} value={w.id}>{w.title} ({w.type})</option>)}
+                      </select>
+                    </div>
+                    <button onClick={saveEditSession} style={{
+                      ...S.btn1,marginTop:0,padding:"10px",fontSize:"12px",
+                    }}>Save Changes</button>
                   </div>
-                  <div style={{textAlign:"right",marginRight:"8px"}}>
-                    <div style={{fontFamily:THEME.fonts.mono,fontSize:"14px"}}>{s.signups.length}/{s.capacity}</div>
-                  </div>
-                  <button onClick={()=>deleteSession(s.id)} style={{background:"none",border:"none",cursor:"pointer",padding:"6px"}}>
-                    <I.trash size={14} color={THEME.colors.error} />
-                  </button>
-                </div>
+                )}
               </div>
             );
           })}
