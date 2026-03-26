@@ -243,13 +243,13 @@ export default function App() {
       <style>{globalCSS(THEME)}</style>
       <div style={S.app}>
         <AuthContext.Provider value={{ user, login, logout }}>
-          {!user ? (
-            view === "activate" && activationToken
-              ? <ActivateScreen token={activationToken} onActivated={handleActivated} onCancel={() => { clearActivationToken(); setActivationToken(null); setView("login"); }} />
-              : view === "signup"
+          {view === "activate" && activationToken
+            ? <ActivateScreen token={activationToken} onActivated={handleActivated} onCancel={() => { clearActivationToken(); setActivationToken(null); setView("login"); }} />
+            : !user ? (
+              view === "signup"
                 ? <SignupScreen onSwitch={() => setView("login")} onLogin={login} />
                 : <LoginScreen onSwitch={() => setView("signup")} onLogin={login} />
-          ) : <MainApp />}
+            ) : <MainApp />}
         </AuthContext.Provider>
       </div>
     </SettingsContext.Provider>
