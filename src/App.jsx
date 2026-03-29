@@ -34,11 +34,16 @@ const ChatIcon = ({ size = 20, color }) => (
   </svg>
 );
 
+import OnboardGym from "./screens/onboard";
+
 // Check URL for activation token
 const getActivationToken = () => {
   const params = new URLSearchParams(window.location.search);
   return params.get("token");
 };
+
+// Check if this is the onboard admin page
+const isOnboardPage = () => window.location.pathname === "/onboard";
 
 const clearActivationToken = () => {
   const url = new URL(window.location.href);
@@ -222,6 +227,16 @@ export default function App() {
       setView("login");
     }
   };
+
+  // Onboard admin page — accessible at any subdomain/onboard
+  if (isOnboardPage()) {
+    return (
+      <>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');*{margin:0;padding:0;box-sizing:border-box;}body{background:#0B0F0D;}`}</style>
+        <OnboardGym />
+      </>
+    );
+  }
 
   if (loading) {
     return (
