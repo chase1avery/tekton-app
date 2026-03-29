@@ -6,23 +6,103 @@ import { useState, useEffect, createContext, useContext, useCallback } from "rea
 import { createClient } from "@supabase/supabase-js";
 
 // ---- GYM CONFIG ----
+// Default fallback config (used until tenant config loads from database)
 export const DEFAULT_GYM_CONFIG = {
-  id: "tekton-fitness", name: "Tekton Fitness", shortName: "TEKTON",
-  tagline: "CrossFit. Nutrition. Community.", subtitle: "Built Here.",
-  location: "Murray, Utah", address: "5914 S 350 W, Murray, UT 84107",
-  phone: "(801) 419-2488", email: "info@tektonfitness.com",
-  website: "tektonfitness.com", since: "2012",
+  id: "brodi-demo", name: "Brodi", shortName: "BRODI",
+  tagline: "Gym Management. Community. Confidence.", subtitle: "Built for the Box.",
+  location: "", address: "", phone: "", email: "", website: "",
+  since: "2026",
   colors: { primary: "#2D8C4E", primaryDark: "#1F6B3A", primaryLight: "#3DAF62", primarySubtle: "rgba(45, 140, 78, 0.12)", secondary: "#1A1A1A", accent: "#D4A843", accentSubtle: "rgba(212, 168, 67, 0.12)" },
   logoUrl: null,
-  classTypes: ["CrossFit", "Open Gym", "Barbell Club", "MetFix", "Nutrition Coaching"],
+  classTypes: ["CrossFit", "Open Gym"],
   membershipTiers: [
     { id: "unlimited", name: "Unlimited", price: 175, interval: "month" },
     { id: "limited", name: "3x/Week", price: 140, interval: "month" },
     { id: "drop-in", name: "Drop-In", price: 25, interval: "visit" },
   ],
-  hours: { mon: "5:00 AM – 7:30 PM", tue: "5:00 AM – 7:30 PM", wed: "5:00 AM – 7:30 PM", thu: "5:00 AM – 7:30 PM", fri: "5:00 AM – 6:30 PM", sat: "7:00 AM – 10:00 AM", sun: "Closed" },
+  hours: { mon: "Closed", tue: "Closed", wed: "Closed", thu: "Closed", fri: "Closed", sat: "Closed", sun: "Closed" },
 };
 export let GYM_CONFIG = { ...DEFAULT_GYM_CONFIG };
+
+// ---- MULTI-TENANT RESOLVER ----
+// Reads subdomain from URL to determine which gym to load
+// tekton.brodiapp.com → "tekton" → gym_id "tekton-fitness"
+// localhost:5173 → falls back to DEFAULT_GYM_CONFIG.id
+export const resolveSubdomain = () => {
+  const hostname = window.location.hostname;
+  // Local development fallback
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    // Check for ?gym= query param for local dev testing
+    const params = new URLSearchParams(window.location.search);
+    return params.get('gym') || null;
+  }
+  // Production: extract subdomain from *.brodiapp.com or *.vercel.app
+  const parts = hostname.split('.');
+  if (parts.length >= 3) return parts[0]; // e.g. "tekton" from "tekton.brodiapp.com"
+  if (parts.length === 2 && hostname.endsWith('.vercel.app')) return parts[0].replace('-app', '');
+  return null;
+};
+
+// Resolve tenant: subdomain → gym_id via tenants table
+export const resolveTenant = async (supabaseClient) => {
+  const subdomain = resolveSubdomain();
+  if (!subdomain) return GYM_CONFIG.id; // fallback to default
+
+  try {
+    const { data } = await supabaseClient
+      .from('tenants')
+      .select('gym_id')
+      .eq('subdomain', subdomain)
+      .eq('active', true)
+      .single();
+    if (data) return data.gym_id;
+  } catch (e) {
+    console.log('Tenant lookup failed, using default:', e.message);
+  }
+  return GYM_CONFIG.id;
+};
+
+// Load full gym config from gym_settings and apply it
+export const loadAndApplyGymConfig = async (supabaseClient, gymId) => {
+  GYM_CONFIG.id = gymId;
+  try {
+    const { data } = await supabaseClient
+      .from('gym_settings')
+      .select('*')
+      .eq('gym_id', gymId)
+      .single();
+    if (data) {
+      GYM_CONFIG.name = data.name || GYM_CONFIG.name;
+      GYM_CONFIG.shortName = data.short_name || GYM_CONFIG.name.toUpperCase();
+      if (data.primary_color) {
+        GYM_CONFIG.colors.primary = data.primary_color;
+        GYM_CONFIG.colors.primaryDark = darkenHex(data.primary_color);
+        GYM_CONFIG.colors.primaryLight = lightenHex(data.primary_color);
+        GYM_CONFIG.colors.primarySubtle = subtleHex(data.primary_color);
+      }
+      if (data.accent_color) {
+        GYM_CONFIG.colors.accent = data.accent_color;
+        GYM_CONFIG.colors.accentSubtle = subtleHex(data.accent_color);
+      }
+      GYM_CONFIG.logoUrl = data.logo_url || null;
+      GYM_CONFIG.tagline = data.tagline || GYM_CONFIG.tagline;
+      GYM_CONFIG.subtitle = data.subtitle || GYM_CONFIG.subtitle;
+      GYM_CONFIG.location = data.location || GYM_CONFIG.location;
+      GYM_CONFIG.address = data.address || GYM_CONFIG.address;
+      GYM_CONFIG.phone = data.phone || GYM_CONFIG.phone;
+      GYM_CONFIG.email = data.email || GYM_CONFIG.email;
+      GYM_CONFIG.website = data.website || GYM_CONFIG.website;
+      GYM_CONFIG.since = data.since || GYM_CONFIG.since;
+      if (data.class_types) GYM_CONFIG.classTypes = typeof data.class_types === 'string' ? JSON.parse(data.class_types) : data.class_types;
+      if (data.membership_tiers) GYM_CONFIG.membershipTiers = typeof data.membership_tiers === 'string' ? JSON.parse(data.membership_tiers) : data.membership_tiers;
+      if (data.hours) GYM_CONFIG.hours = typeof data.hours === 'string' ? JSON.parse(data.hours) : data.hours;
+      THEME = buildTheme(GYM_CONFIG);
+    }
+  } catch (e) {
+    console.log('Gym settings load failed, using defaults:', e.message);
+  }
+  THEME = buildTheme(GYM_CONFIG);
+};
 
 // ---- COLOR HELPERS ----
 export const hexToRgb = (hex) => { const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16); return { r, g, b }; };
@@ -179,7 +259,7 @@ export const services = {
   },
   auth: {
     login: async (email, password) => { const { data, error } = await supabase.auth.signInWithPassword({ email, password }); if (error) throw new Error(error.message); const { data: member } = await supabase.from('members').select('*').eq('auth_id', data.user.id).single(); if (!member) throw new Error("Member profile not found"); return mapMember(member); },
-    signup: async ({ email, password, firstName, lastName }) => { const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { first_name: firstName, last_name: lastName } } }); if (error) throw new Error(error.message); await new Promise(r => setTimeout(r, 500)); const { data: member } = await supabase.from('members').select('*').eq('auth_id', data.user.id).single(); return mapMember(member); },
+    signup: async ({ email, password, firstName, lastName }) => { const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { first_name: firstName, last_name: lastName, gym_id: GYM_CONFIG.id } } }); if (error) throw new Error(error.message); await new Promise(r => setTimeout(r, 500)); const { data: member } = await supabase.from('members').select('*').eq('auth_id', data.user.id).single(); if (member && member.gym_id !== GYM_CONFIG.id) { await supabase.from('members').update({ gym_id: GYM_CONFIG.id }).eq('id', member.id); member.gym_id = GYM_CONFIG.id; } return mapMember(member); },
     logout: async () => { await supabase.auth.signOut(); },
     getSession: async () => { const { data: { session } } = await supabase.auth.getSession(); if (!session) return null; const { data: member } = await supabase.from('members').select('*').eq('auth_id', session.user.id).single(); return mapMember(member); },
   },

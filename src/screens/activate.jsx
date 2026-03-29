@@ -62,6 +62,7 @@ const ActivateScreen = ({ token, onActivated, onCancel }) => {
           data: {
             first_name: pending.first_name,
             last_name: pending.last_name,
+            gym_id: pending.gym_id || GYM_CONFIG.id,
           }
         }
       });

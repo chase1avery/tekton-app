@@ -8,6 +8,7 @@ import {
   AuthContext, SettingsContext, AnnouncementContext,
   applyGymSettings, globalCSS, membersCache, setMembersCache,
   calcStreak, streakCache, setStreakCache,
+  resolveTenant, loadAndApplyGymConfig,
 } from "./config/shared";
 
 import LoginScreen from "./screens/login";
@@ -173,10 +174,9 @@ export default function App() {
   const logout = useCallback(async () => { await services.auth.logout(); setUser(null); setView("login"); }, []);
 
   const loadGymSettings = useCallback(async () => {
-    try {
-      const { data } = await supabase.from("gym_settings").select("*").eq("gym_id", GYM_CONFIG.id).single();
-      if (data) applyGymSettings({ name: data.name, shortName: data.short_name, primaryColor: data.primary_color, logoUrl: data.logo_url });
-    } catch (e) { /* defaults */ }
+    // Resolve which gym this subdomain belongs to, then load full config
+    const gymId = await resolveTenant(supabase);
+    await loadAndApplyGymConfig(supabase, gymId);
   }, []);
 
   const refreshSettings = useCallback(() => { loadGymSettings().then(() => setSettingsVersion(v => v + 1)); }, [loadGymSettings]);
